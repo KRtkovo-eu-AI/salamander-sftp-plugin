@@ -44,6 +44,7 @@
 #define IDC_SESS_RENAME                 583
 #define IDC_SESS_FOLDER                 584
 #define IDC_SESS_DEFAULT                585
+#define IDC_ENCODING                    586
 #define IDD_PATHDLG                     530
 #define IDC_PATHSTRING                  531
 #define IDC_FILECHECK                   532

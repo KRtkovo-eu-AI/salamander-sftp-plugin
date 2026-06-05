@@ -11,6 +11,7 @@
 
 #include "precomp.h"
 #include "sftpglue.h"
+#include <shlobj.h> // SHBrowseForFolder (výběr lokálního adresáře pro synchronizaci)
 
 // ****************************************************************************
 // MENU SECTION
@@ -148,6 +149,39 @@ CPluginInterfaceForMenuExt::ExecuteMenuItem(CSalamanderForOperationsAbstract* sa
         CPluginFSInterface* fs = (CPluginFSInterface*)SalamanderGeneral->GetPanelPluginFS(PANEL_SOURCE);
         if (fs != NULL)
             SftpCalcSize(parent, fs->Path, PANEL_SOURCE);
+        return TRUE;
+    }
+
+    case MENUCMD_SYNC:
+    {
+        CPluginFSInterface* fs = (CPluginFSInterface*)SalamanderGeneral->GetPanelPluginFS(PANEL_SOURCE);
+        if (fs == NULL)
+            return TRUE;
+        char remoteDir[MAX_PATH];
+        lstrcpyn(remoteDir, fs->Path, MAX_PATH);
+        // vyber lokální adresář
+        char localDir[MAX_PATH] = "";
+        BROWSEINFO bi;
+        memset(&bi, 0, sizeof(bi));
+        bi.hwndOwner = parent;
+        bi.lpszTitle = "Vyberte lokální adresář pro synchronizaci:";
+        bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
+        LPITEMIDLIST pidl = SHBrowseForFolder(&bi);
+        if (pidl == NULL)
+            return TRUE;
+        SHGetPathFromIDList(pidl, localDir);
+        CoTaskMemFree(pidl);
+        if (localDir[0] == 0)
+            return TRUE;
+        int r = SalamanderGeneral->SalMessageBox(parent,
+                                                 "Směr synchronizace:\n\n"
+                                                 "Ano = Stáhnout (server → PC)\n"
+                                                 "Ne = Nahrát (PC → server)\n"
+                                                 "Zrušit = storno",
+                                                 "Synchronizace adresáře", MB_YESNOCANCEL | MB_ICONQUESTION);
+        if (r == IDCANCEL)
+            return TRUE;
+        SftpSyncDir(parent, remoteDir, localDir, r == IDYES ? 0 : 1);
         return TRUE;
     }
 

@@ -113,6 +113,7 @@ char* LoadStr(int resID);
 #define MENUCMD_DISCONNECT_ACTIVE 18
 #define MENUCMD_EDITFILE 20  // upravit soubor (stáhnout -> editor -> nahrát zpět)
 #define MENUCMD_CALCSIZE 21  // spočítat velikost adresářů na serveru
+#define MENUCMD_SYNC 22      // synchronizace adresáře s lokálním
 
 //
 // ****************************************************************************

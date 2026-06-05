@@ -588,6 +588,21 @@ CPluginInterface::LoadConfiguration(HWND parent, HKEY regKey, CSalamanderRegistr
             ConfigVersion = 1; // configuration version stored in the registry (used previously, just without a version number)
 
         registry->GetValue(regKey, "DefaultSession", REG_SZ, SftpDefaultSession, sizeof(SftpDefaultSession));
+        DWORD enc = 0;
+        if (registry->GetValue(regKey, "Encoding", REG_DWORD, &enc, sizeof(DWORD)))
+            SftpEncoding = (int)enc;
+        char folderList[SFTP_MAX_FOLDERS * 130] = "";
+        if (registry->GetValue(regKey, "FolderList", REG_SZ, folderList, sizeof(folderList)))
+        {
+            SftpFolderCount = 0;
+            char* fctx = NULL;
+            char* ftok = strtok_s(folderList, "\n", &fctx);
+            while (ftok != NULL && SftpFolderCount < SFTP_MAX_FOLDERS)
+            {
+                lstrcpyn(SftpFolders[SftpFolderCount++], ftok, 128);
+                ftok = strtok_s(NULL, "\n", &fctx);
+            }
+        }
 
         HKEY actKey;
         if (registry->OpenKey(regKey, CONFIG_KEY, actKey))
@@ -647,6 +662,7 @@ CPluginInterface::LoadConfiguration(HWND parent, HKEY regKey, CSalamanderRegistr
                     p.UseCompression = comp != 0;
                     p.Protocol = (int)proto;
                     p.ScpFallback = scpfb != 0;
+                    registry->GetValue(pk, "Folder", REG_SZ, p.Folder, sizeof(p.Folder));
                     registry->CloseKey(pk);
                     SftpProfileCount++;
                 }
@@ -664,6 +680,18 @@ CPluginInterface::SaveConfiguration(HWND parent, HKEY regKey, CSalamanderRegistr
     DWORD v = CURRENT_CONFIG_VERSION;
     registry->SetValue(regKey, CONFIG_VERSION, REG_DWORD, &v, sizeof(DWORD));
     registry->SetValue(regKey, "DefaultSession", REG_SZ, SftpDefaultSession, -1);
+    DWORD enc = (DWORD)SftpEncoding;
+    registry->SetValue(regKey, "Encoding", REG_DWORD, &enc, sizeof(DWORD));
+    {
+        char folderList[SFTP_MAX_FOLDERS * 130] = "";
+        for (int i = 0; i < SftpFolderCount; i++)
+        {
+            if (i > 0)
+                strcat_s(folderList, "\n");
+            strcat_s(folderList, SftpFolders[i]);
+        }
+        registry->SetValue(regKey, "FolderList", REG_SZ, folderList, -1);
+    }
 
     HKEY actKey;
     if (registry->CreateKey(regKey, CONFIG_KEY, actKey))
@@ -714,6 +742,7 @@ CPluginInterface::SaveConfiguration(HWND parent, HKEY regKey, CSalamanderRegistr
                 registry->SetValue(pk, "Compression", REG_DWORD, &comp, sizeof(DWORD));
                 registry->SetValue(pk, "Protocol", REG_DWORD, &proto, sizeof(DWORD));
                 registry->SetValue(pk, "ScpFallback", REG_DWORD, &scpfb, sizeof(DWORD));
+                registry->SetValue(pk, "Folder", REG_SZ, SftpProfiles[i].Folder, -1);
                 registry->CloseKey(pk);
             }
         }
@@ -737,6 +766,8 @@ CPluginInterface::Connect(HWND parent, CSalamanderConnectAbstract* salamander)
     salamander->AddMenuItem(-1, "&Upravit soubor (server)", SALHOTKEY(VK_F4, 0), MENUCMD_EDITFILE, FALSE,
                             MENU_EVENT_TRUE, MENU_EVENT_THIS_PLUGIN_FS | MENU_EVENT_FILE_FOCUSED, MENU_SKILLLEVEL_ALL);
     salamander->AddMenuItem(-1, "&Spočítat velikost (server)", 0, MENUCMD_CALCSIZE, FALSE,
+                            MENU_EVENT_TRUE, MENU_EVENT_THIS_PLUGIN_FS, MENU_SKILLLEVEL_ALL);
+    salamander->AddMenuItem(-1, "S&ynchronizovat adresář…", 0, MENUCMD_SYNC, FALSE,
                             MENU_EVENT_TRUE, MENU_EVENT_THIS_PLUGIN_FS, MENU_SKILLLEVEL_ALL);
     salamander->AddMenuItem(-1, NULL, 0, 0, FALSE, 0, 0, MENU_SKILLLEVEL_ALL); // separator
     salamander->AddMenuItem(-1, "&Odpojit", 0, MENUCMD_DISCONNECT_ACTIVE, FALSE, MENU_EVENT_TRUE, MENU_EVENT_THIS_PLUGIN_FS, MENU_SKILLLEVEL_ALL);

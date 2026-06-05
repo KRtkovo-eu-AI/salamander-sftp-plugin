@@ -135,9 +135,11 @@ BEGIN
     CONTROL         "Povolit nouzově &SCP",IDC_SCPFALLBACK,"Button",BS_AUTOCHECKBOX | BS_MULTILINE | WS_TABSTOP,278,107,58,18
     LTEXT           "Po&čáteční vzdálený adresář na serveru:",IDC_ST_PAGE2,126,15,210,8
     EDITTEXT        IDC_PATH,126,27,214,12,ES_AUTOHSCROLL
-    GROUPBOX        "Šifrování a komprese",IDC_ST_PAGE3,126,3,214,72
-    CONTROL         "Použít &kompresi přenosu (zlib)",IDC_SSHCOMPRESS,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,133,18,180,10
-    LTEXT           "Šifry, výměna klíčů i typy klíčů se sjednají automaticky podle serveru (vč. moderních: curve25519, ECDH/ECDSA, ed25519, AES-GCM, ChaCha20-Poly1305).",IDC_ST_PAGE3,133,34,200,36
+    GROUPBOX        "Šifrování a komprese",IDC_ST_PAGE3,126,3,214,108
+    CONTROL         "Použít &kompresi přenosu (zlib)",IDC_SSHCOMPRESS,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,133,16,180,10
+    LTEXT           "&Kódování názvů souborů:",IDC_ST_PAGE3,133,32,110,8
+    COMBOBOX        IDC_ENCODING,133,42,110,80,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Šifry, výměna klíčů i typy klíčů se sjednají automaticky podle serveru (vč. moderních: curve25519, ECDH/ECDSA, ed25519, AES-GCM, ChaCha20-Poly1305).",IDC_ST_PAGE3,133,62,200,44
     LISTBOX         IDC_SESSIONS,126,3,148,170,LBS_NOTIFY | WS_VSCROLL | WS_TABSTOP | NOT WS_VISIBLE
     PUSHBUTTON      "&Nový",IDC_SESS_NEW,280,3,60,14,NOT WS_VISIBLE
     PUSHBUTTON      "&Editovat",IDC_SESS_EDIT,280,21,60,14,NOT WS_VISIBLE

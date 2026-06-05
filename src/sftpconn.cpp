@@ -20,10 +20,36 @@ void* CSftpConnection::HostKeyCtx = nullptr;
 CSftpConnection::KbdPromptFn CSftpConnection::KbdCb = nullptr;
 void* CSftpConnection::KbdCtx = nullptr;
 std::string CSftpConnection::KnownHostsFile;
+int CSftpConnection::Encoding = 0;
 
 void CSftpConnection::SetKnownHostsFile(const char* path)
 {
     KnownHostsFile = (path != nullptr) ? path : "";
+}
+
+std::string CSftpConnection::ToServerEnc(const char* in)
+{
+    if (Encoding == 2 || in == nullptr || in[0] == 0)
+        return (in != nullptr) ? in : "";
+    wchar_t w[2 * MAX_PATH];
+    if (MultiByteToWideChar(CP_ACP, 0, in, -1, w, 2 * MAX_PATH) == 0)
+        return in;
+    char out[4 * MAX_PATH];
+    WideCharToMultiByte(CP_UTF8, 0, w, -1, out, sizeof(out), nullptr, nullptr);
+    return out;
+}
+
+std::string CSftpConnection::ToDisplayEnc(const char* in)
+{
+    if (Encoding == 2 || in == nullptr || in[0] == 0)
+        return (in != nullptr) ? in : "";
+    wchar_t w[2 * MAX_PATH];
+    // jen platné UTF-8 převeď; jinak ponech (server může vracet i jiné kódování)
+    if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, in, -1, w, 2 * MAX_PATH) == 0)
+        return in;
+    char out[4 * MAX_PATH];
+    WideCharToMultiByte(CP_ACP, 0, w, -1, out, sizeof(out), nullptr, nullptr);
+    return out;
 }
 
 static std::string ShellQuote(const char* s); // definice níže (u SCP helperů)
@@ -641,6 +667,8 @@ int CSftpConnection::TryPpkAuth(const char* user, const char* keyFile, const cha
 
 bool CSftpConnection::RemoteFileSize(const char* remotePath, unsigned __int64& size)
 {
+    std::string _rp = ToServerEnc(remotePath);
+    remotePath = _rp.c_str();
     size = 0;
     if (ScpMode)
     {
@@ -788,7 +816,7 @@ bool CSftpConnection::ScpListDir(const char* remotePath, std::vector<CSftpEntry>
             }
             if (name == "." || name == "..")
                 continue;
-            e.Name = name;
+            e.Name = ToDisplayEnc(name.c_str());
             e.Size = size;
             e.MTime = mtime;
             e.Permissions = RwxToMode(perms + 1);
@@ -873,6 +901,8 @@ bool CSftpConnection::ScpUpload(const char* localPath, const char* remotePath)
 
 bool CSftpConnection::ListDir(const char* remotePath, std::vector<CSftpEntry>& out)
 {
+    std::string _rp = ToServerEnc(remotePath);
+    remotePath = _rp.c_str();
     if (ScpMode)
         return ScpListDir(remotePath, out);
     out.clear();
@@ -887,7 +917,7 @@ bool CSftpConnection::ListDir(const char* remotePath, std::vector<CSftpEntry>& o
         if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0)
             continue;
         CSftpEntry e;
-        e.Name = name;
+        e.Name = ToDisplayEnc(name);
         e.IsDir = (attrs.flags & LIBSSH2_SFTP_ATTR_PERMISSIONS) && LIBSSH2_SFTP_S_ISDIR(attrs.permissions);
         e.IsLink = (attrs.flags & LIBSSH2_SFTP_ATTR_PERMISSIONS) && LIBSSH2_SFTP_S_ISLNK(attrs.permissions);
         e.Size = (attrs.flags & LIBSSH2_SFTP_ATTR_SIZE) ? attrs.filesize : 0;
@@ -935,6 +965,8 @@ bool CSftpConnection::ListDir(const char* remotePath, std::vector<CSftpEntry>& o
 
 int CSftpConnection::PathType(const char* remotePath)
 {
+    std::string _rp = ToServerEnc(remotePath);
+    remotePath = _rp.c_str();
     if (ScpMode)
     {
         std::string q = ShellQuote(remotePath);
@@ -957,6 +989,8 @@ int CSftpConnection::PathType(const char* remotePath)
 
 bool CSftpConnection::Chmod(const char* remotePath, unsigned long mode)
 {
+    std::string _rp = ToServerEnc(remotePath);
+    remotePath = _rp.c_str();
     if (ScpMode)
     {
         char oct[16];
@@ -978,6 +1012,8 @@ bool CSftpConnection::Chmod(const char* remotePath, unsigned long mode)
 
 bool CSftpConnection::GetPermissions(const char* remotePath, unsigned long& mode)
 {
+    std::string _rp = ToServerEnc(remotePath);
+    remotePath = _rp.c_str();
     if (ScpMode)
     {
         std::string cmd = "stat -c %a -- " + ShellQuote(remotePath);
@@ -1005,6 +1041,8 @@ bool CSftpConnection::GetPermissions(const char* remotePath, unsigned long& mode
 bool CSftpConnection::StatFull(const char* remotePath, unsigned __int64& size, unsigned long& perms,
                                unsigned long& uid, unsigned long& gid, unsigned long& mtime)
 {
+    std::string _rp = ToServerEnc(remotePath);
+    remotePath = _rp.c_str();
     if (ScpMode)
     {
         std::string cmd = "stat -c '%a %s %u %g %Y' -- " + ShellQuote(remotePath);
@@ -1041,6 +1079,8 @@ bool CSftpConnection::StatFull(const char* remotePath, unsigned __int64& size, u
 
 bool CSftpConnection::Download(const char* remotePath, const char* localPath, unsigned __int64 resumeOffset)
 {
+    std::string _rp = ToServerEnc(remotePath);
+    remotePath = _rp.c_str();
     if (ScpMode)
         return ScpDownload(remotePath, localPath); // SCP resume neumí
     LIBSSH2_SFTP_HANDLE* h = libssh2_sftp_open(Sftp, remotePath, LIBSSH2_FXF_READ, 0);
@@ -1077,6 +1117,8 @@ bool CSftpConnection::Download(const char* remotePath, const char* localPath, un
 
 bool CSftpConnection::Upload(const char* localPath, const char* remotePath, unsigned __int64 resumeOffset)
 {
+    std::string _rp = ToServerEnc(remotePath);
+    remotePath = _rp.c_str();
     if (ScpMode)
         return ScpUpload(localPath, remotePath); // SCP resume neumí
     FILE* f = nullptr;
@@ -1204,6 +1246,8 @@ bool CSftpConnection::ExecCommand(const char* command, std::string& output)
 
 bool CSftpConnection::MakeDir(const char* remotePath)
 {
+    std::string _rp = ToServerEnc(remotePath);
+    remotePath = _rp.c_str();
     if (ScpMode)
         return ExecSimple(("mkdir -- " + ShellQuote(remotePath)).c_str());
     if (libssh2_sftp_mkdir(Sftp, remotePath,
@@ -1214,6 +1258,8 @@ bool CSftpConnection::MakeDir(const char* remotePath)
 
 bool CSftpConnection::RemoveDir(const char* remotePath)
 {
+    std::string _rp = ToServerEnc(remotePath);
+    remotePath = _rp.c_str();
     if (ScpMode)
         return ExecSimple(("rmdir -- " + ShellQuote(remotePath)).c_str());
     if (libssh2_sftp_rmdir(Sftp, remotePath)) { SetError("Smazání adresáře"); return false; }
@@ -1222,6 +1268,8 @@ bool CSftpConnection::RemoveDir(const char* remotePath)
 
 bool CSftpConnection::RemoveFile(const char* remotePath)
 {
+    std::string _rp = ToServerEnc(remotePath);
+    remotePath = _rp.c_str();
     if (ScpMode)
         return ExecSimple(("rm -f -- " + ShellQuote(remotePath)).c_str());
     if (libssh2_sftp_unlink(Sftp, remotePath)) { SetError("Smazání souboru"); return false; }
@@ -1230,6 +1278,9 @@ bool CSftpConnection::RemoveFile(const char* remotePath)
 
 bool CSftpConnection::Rename(const char* oldPath, const char* newPath)
 {
+    std::string _op = ToServerEnc(oldPath), _np = ToServerEnc(newPath);
+    oldPath = _op.c_str();
+    newPath = _np.c_str();
     if (ScpMode)
         return ExecSimple(("mv -- " + ShellQuote(oldPath) + " " + ShellQuote(newPath)).c_str());
     if (libssh2_sftp_rename(Sftp, oldPath, newPath)) { SetError("Přejmenování"); return false; }

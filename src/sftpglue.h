@@ -35,13 +35,20 @@ struct CSftpSavedProfile
     bool UseCompression; // zlib komprese
     int Protocol;        // 0 = SFTP, 1 = SCP
     bool ScpFallback;    // nouzově SCP
+    char Folder[128];    // složka (skupina) spojení, "" = kořen
 };
 extern CSftpSavedProfile SftpProfiles[SFTP_MAX_PROFILES];
 extern int SftpProfileCount;
 extern char SftpDefaultSession[128]; // název výchozího spojení (volba "Jako výchozí")
 
+#define SFTP_MAX_FOLDERS 64
+extern char SftpFolders[SFTP_MAX_FOLDERS][128]; // názvy složek (i prázdných)
+extern int SftpFolderCount;
+
 // Zajistí připojení podle SftpProfile. Vrací TRUE pokud připojeno.
 bool SftpEnsureConnected(HWND parent);
+
+extern int SftpEncoding; // 0 = Auto/UTF-8, 1 = UTF-8, 2 = Vypnuto
 
 // POSIX path helpery (dopředná lomítka, absolutní cesty začínající "/").
 void SftpNormalize(char* path);                       // in-place normalizace
@@ -56,4 +63,5 @@ bool SftpInputDialog(HWND parent, const char* prompt, bool echo, char* out, int 
 
 // Příkazy z menu pluginu (obcházejí limity jádra Salamander 5.0).
 void SftpEditFile(HWND parent, const char* remoteDir, const char* fileName);
+void SftpSyncDir(HWND parent, const char* remoteDir, const char* localDir, int direction);
 void SftpCalcSize(HWND parent, const char* remoteDir, int panel);

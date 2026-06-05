@@ -8,6 +8,9 @@ CSftpProfile SftpProfile = {"", 22, "", "", "", false};
 CSftpSavedProfile SftpProfiles[SFTP_MAX_PROFILES];
 int SftpProfileCount = 0;
 char SftpDefaultSession[128] = "";
+char SftpFolders[SFTP_MAX_FOLDERS][128];
+int SftpFolderCount = 0;
+int SftpEncoding = 0; // 0 = Auto (UTF-8), 1 = UTF-8, 2 = Vypnuto (bez konverze)
 
 // dotaz uživatele na důvěru host key serveru
 static int SftpHostKeyCallback(void* /*ctx*/, const char* host, int port, const char* type,
@@ -79,6 +82,7 @@ bool SftpEnsureConnected(HWND parent)
         CSftpConnection::SetKbdPromptCallback(SftpKbdPromptCallback, nullptr);
         initialized = true;
     }
+    CSftpConnection::SetEncoding(SftpEncoding); // kódování názvů souborů
     if (!SftpConn.Connect(SftpProfile.Host, SftpProfile.Port, SftpProfile.User, SftpProfile.Password, SftpProfile.KeyFile,
                           SftpProfile.UseCompression, SftpProfile.Protocol, SftpProfile.ScpFallback))
     {

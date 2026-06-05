@@ -103,14 +103,86 @@ static bool g_PwdShown = false;
 static HFONT g_EyeFont = NULL;
 
 // naplň seznam uložených spojení
+// je daná složka už v seznamu složek?
+static bool FolderKnown(const char* name)
+{
+    for (int i = 0; i < SftpFolderCount; i++)
+        if (strcmp(SftpFolders[i], name) == 0)
+            return true;
+    return false;
+}
+
 static void FillSessionList(HWND HWindow)
 {
     HWND lb = GetDlgItem(HWindow, IDC_SESSIONS);
     SendMessage(lb, LB_RESETCONTENT, 0, 0);
+
+    // doplň do seznamu složek i ty, které jsou jen u profilů
     for (int i = 0; i < SftpProfileCount; i++)
+        if (SftpProfiles[i].Folder[0] != 0 && !FolderKnown(SftpProfiles[i].Folder) && SftpFolderCount < SFTP_MAX_FOLDERS)
+            lstrcpyn(SftpFolders[SftpFolderCount++], SftpProfiles[i].Folder, 128);
+
+    // 1) spojení v kořeni
+    for (int i = 0; i < SftpProfileCount; i++)
+        if (SftpProfiles[i].Folder[0] == 0)
+        {
+            const char* nm = SftpProfiles[i].Name[0] != 0 ? SftpProfiles[i].Name : SftpProfiles[i].Host;
+            int li = (int)SendMessage(lb, LB_ADDSTRING, 0, (LPARAM)nm);
+            SendMessage(lb, LB_SETITEMDATA, li, i);
+        }
+    // 2) složky a jejich obsah
+    for (int fi = 0; fi < SftpFolderCount; fi++)
     {
-        const char* nm = SftpProfiles[i].Name[0] != 0 ? SftpProfiles[i].Name : SftpProfiles[i].Host;
-        SendMessage(lb, LB_ADDSTRING, 0, (LPARAM)nm);
+        char hdr[160];
+        _snprintf_s(hdr, _TRUNCATE, "[ %s ]", SftpFolders[fi]);
+        int hl = (int)SendMessage(lb, LB_ADDSTRING, 0, (LPARAM)hdr);
+        SendMessage(lb, LB_SETITEMDATA, hl, (LPARAM)-1); // hlavička složky (není profil)
+        for (int i = 0; i < SftpProfileCount; i++)
+            if (strcmp(SftpProfiles[i].Folder, SftpFolders[fi]) == 0)
+            {
+                char line[220];
+                const char* nm = SftpProfiles[i].Name[0] != 0 ? SftpProfiles[i].Name : SftpProfiles[i].Host;
+                _snprintf_s(line, _TRUNCATE, "      %s", nm);
+                int li = (int)SendMessage(lb, LB_ADDSTRING, 0, (LPARAM)line);
+                SendMessage(lb, LB_SETITEMDATA, li, i);
+            }
+    }
+}
+
+// vrátí index profilu vybraného v seznamu (mapování přes item-data), nebo -1
+static int GetSelProfile(HWND HWindow)
+{
+    int li = (int)SendDlgItemMessage(HWindow, IDC_SESSIONS, LB_GETCURSEL, 0, 0);
+    if (li < 0)
+        return -1;
+    int idx = (int)SendDlgItemMessage(HWindow, IDC_SESSIONS, LB_GETITEMDATA, li, 0);
+    return (idx >= 0 && idx < SftpProfileCount) ? idx : -1;
+}
+
+// zjistí složku podle aktuálního výběru (hlavička složky / spojení ve složce), jinak ""
+static void GetSelFolder(HWND HWindow, char* out, int outSize)
+{
+    out[0] = 0;
+    HWND lb = GetDlgItem(HWindow, IDC_SESSIONS);
+    int li = (int)SendMessage(lb, LB_GETCURSEL, 0, 0);
+    if (li < 0)
+        return;
+    int idx = (int)SendMessage(lb, LB_GETITEMDATA, li, 0);
+    if (idx >= 0 && idx < SftpProfileCount)
+    {
+        lstrcpyn(out, SftpProfiles[idx].Folder, outSize);
+        return;
+    }
+    char txt[220];
+    SendMessage(lb, LB_GETTEXT, li, (LPARAM)txt);
+    char* s = strstr(txt, "[ ");
+    if (s != NULL)
+    {
+        s += 2;
+        char* e = strstr(s, " ]");
+        if (e != NULL)
+            *e = 0;
+        lstrcpyn(out, s, outSize);
     }
 }
 
@@ -214,6 +286,7 @@ static int ControlPage(int id)
         return 2; // Adresáře
     case IDC_ST_PAGE3:
     case IDC_SSHCOMPRESS:
+    case IDC_ENCODING:
         return 3; // SSH (šifrování a komprese)
     default:
         return -1; // strom, Pokročilé volby, tlačítka -> vždy
@@ -282,6 +355,13 @@ INT_PTR CALLBACK ConnectDlgProc(HWND HWindow, UINT uMsg, WPARAM wParam, LPARAM l
         SendMessage(combo, CB_ADDSTRING, 0, (LPARAM) "SFTP");
         SendMessage(combo, CB_ADDSTRING, 0, (LPARAM) "SCP");
         SendMessage(combo, CB_SETCURSEL, 0, 0);
+
+        // combo kódování názvů
+        HWND enc = GetDlgItem(HWindow, IDC_ENCODING);
+        SendMessage(enc, CB_ADDSTRING, 0, (LPARAM) "Automaticky (UTF-8)");
+        SendMessage(enc, CB_ADDSTRING, 0, (LPARAM) "UTF-8");
+        SendMessage(enc, CB_ADDSTRING, 0, (LPARAM) "Vypnuto (bez převodu)");
+        SendMessage(enc, CB_SETCURSEL, (SftpEncoding >= 0 && SftpEncoding <= 2) ? SftpEncoding : 0, 0);
 
         // naplň strom kategorií (jako v původním WinSCP); pokročilé stránky skryté
         BuildConnectTree(GetDlgItem(HWindow, IDC_CATTREE), false);
@@ -371,8 +451,8 @@ INT_PTR CALLBACK ConnectDlgProc(HWND HWindow, UINT uMsg, WPARAM wParam, LPARAM l
 
         case IDC_SESSIONS:
         {
-            int sel = (int)SendDlgItemMessage(HWindow, IDC_SESSIONS, LB_GETCURSEL, 0, 0);
-            if (sel >= 0 && sel < SftpProfileCount)
+            int sel = GetSelProfile(HWindow);
+            if (sel >= 0)
             {
                 if (HIWORD(wParam) == LBN_SELCHANGE)
                     LoadProfileToFields(HWindow, SftpProfiles[sel]);
@@ -405,8 +485,8 @@ INT_PTR CALLBACK ConnectDlgProc(HWND HWindow, UINT uMsg, WPARAM wParam, LPARAM l
         case IDC_SESS_EDIT:
         {
             // upravit: načti vybraný profil do polí a přepni na Spojení
-            int sel = (int)SendDlgItemMessage(HWindow, IDC_SESSIONS, LB_GETCURSEL, 0, 0);
-            if (sel < 0 || sel >= SftpProfileCount)
+            int sel = GetSelProfile(HWindow);
+            if (sel < 0)
             {
                 SalamanderGeneral->SalMessageBox(HWindow, "Nejdřív vyberte spojení v seznamu.",
                                                  LoadStr(IDS_PLUGINNAME), MB_OK | MB_ICONINFORMATION);
@@ -420,8 +500,8 @@ INT_PTR CALLBACK ConnectDlgProc(HWND HWindow, UINT uMsg, WPARAM wParam, LPARAM l
 
         case IDC_SESS_RENAME:
         {
-            int sel = (int)SendDlgItemMessage(HWindow, IDC_SESSIONS, LB_GETCURSEL, 0, 0);
-            if (sel < 0 || sel >= SftpProfileCount)
+            int sel = GetSelProfile(HWindow);
+            if (sel < 0)
             {
                 SalamanderGeneral->SalMessageBox(HWindow, "Nejdřív vyberte spojení v seznamu.",
                                                  LoadStr(IDS_PLUGINNAME), MB_OK | MB_ICONINFORMATION);
@@ -440,15 +520,23 @@ INT_PTR CALLBACK ConnectDlgProc(HWND HWindow, UINT uMsg, WPARAM wParam, LPARAM l
 
         case IDC_SESS_FOLDER:
         {
-            SalamanderGeneral->SalMessageBox(HWindow, "Složky (adresáře) spojení nejsou v tomto pluginu podporovány.",
-                                             LoadStr(IDS_PLUGINNAME), MB_OK | MB_ICONINFORMATION);
+            // vytvoř novou složku; pokud je vybráno spojení, přesuň ho do ní
+            char name[128] = "";
+            if (!SftpInputDialog(HWindow, "Název nové složky:", true, name, sizeof(name)) || name[0] == 0)
+                return TRUE;
+            if (!FolderKnown(name) && SftpFolderCount < SFTP_MAX_FOLDERS)
+                lstrcpyn(SftpFolders[SftpFolderCount++], name, 128);
+            int sel = GetSelProfile(HWindow);
+            if (sel >= 0)
+                lstrcpyn(SftpProfiles[sel].Folder, name, sizeof(SftpProfiles[sel].Folder)); // přesuň vybrané do složky
+            FillSessionList(HWindow);
             return TRUE;
         }
 
         case IDC_SESS_DEFAULT:
         {
-            int sel = (int)SendDlgItemMessage(HWindow, IDC_SESSIONS, LB_GETCURSEL, 0, 0);
-            if (sel < 0 || sel >= SftpProfileCount)
+            int sel = GetSelProfile(HWindow);
+            if (sel < 0)
             {
                 SalamanderGeneral->SalMessageBox(HWindow, "Nejdřív vyberte spojení v seznamu.",
                                                  LoadStr(IDS_PLUGINNAME), MB_OK | MB_ICONINFORMATION);
@@ -497,6 +585,7 @@ INT_PTR CALLBACK ConnectDlgProc(HWND HWindow, UINT uMsg, WPARAM wParam, LPARAM l
             p.UseCompression = IsDlgButtonChecked(HWindow, IDC_SSHCOMPRESS) == BST_CHECKED;
             p.ScpFallback = IsDlgButtonChecked(HWindow, IDC_SCPFALLBACK) == BST_CHECKED;
             p.Protocol = (int)SendDlgItemMessage(HWindow, IDC_PROTOCOL, CB_GETCURSEL, 0, 0) == 1 ? 1 : 0;
+            GetSelFolder(HWindow, p.Folder, sizeof(p.Folder)); // ulož do aktuálně vybrané složky
             if (p.Host[0] == 0)
             {
                 SalamanderGeneral->SalMessageBox(HWindow, "Nejdřív zadejte hostitele.",
@@ -531,8 +620,8 @@ INT_PTR CALLBACK ConnectDlgProc(HWND HWindow, UINT uMsg, WPARAM wParam, LPARAM l
 
         case IDC_DELSESSION:
         {
-            int sel = (int)SendDlgItemMessage(HWindow, IDC_SESSIONS, LB_GETCURSEL, 0, 0);
-            if (sel >= 0 && sel < SftpProfileCount)
+            int sel = GetSelProfile(HWindow);
+            if (sel >= 0)
             {
                 for (int i = sel; i < SftpProfileCount - 1; i++)
                     SftpProfiles[i] = SftpProfiles[i + 1];
@@ -556,6 +645,11 @@ INT_PTR CALLBACK ConnectDlgProc(HWND HWindow, UINT uMsg, WPARAM wParam, LPARAM l
             SftpProfile.UseCompression = IsDlgButtonChecked(HWindow, IDC_SSHCOMPRESS) == BST_CHECKED;
             SftpProfile.ScpFallback = IsDlgButtonChecked(HWindow, IDC_SCPFALLBACK) == BST_CHECKED;
             SftpProfile.Protocol = (int)SendDlgItemMessage(HWindow, IDC_PROTOCOL, CB_GETCURSEL, 0, 0) == 1 ? 1 : 0;
+            {
+                int e = (int)SendDlgItemMessage(HWindow, IDC_ENCODING, CB_GETCURSEL, 0, 0);
+                if (e >= 0 && e <= 2)
+                    SftpEncoding = e;
+            }
             GetDlgItemText(HWindow, IDC_PATH, ConnectPath, MAX_PATH);
             if (ConnectPath[0] == 0)
                 strcpy(ConnectPath, "/");

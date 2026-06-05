@@ -166,6 +166,7 @@ static DWORD g_ProgStartTick = 0;
 static HWND g_OvrParent = NULL;
 static int g_OvrMode = 0;        // 0 = ptát se, 1 = přepsat vše, 2 = přeskočit vše
 static bool g_OvrCancel = false; // uživatel zvolil Zrušit
+static int g_SyncMode = 0;       // 1 = synchronizace (přeskoč shodné, neptej se)
 
 // vrací: 1 = přepsat, 0 = přeskočit, -1 = zrušit celou operaci
 static int SftpAskOverwrite(const char* targetName)
@@ -224,6 +225,46 @@ static unsigned __int64 LocalFileSize(const char* path)
     if (!GetFileAttributesEx(path, GetFileExInfoStandard, &fad))
         return 0;
     return ((unsigned __int64)fad.nFileSizeHigh << 32) | fad.nFileSizeLow;
+}
+
+// lokální čas modifikace jako unixový čas (0 pokud neexistuje)
+static unsigned __int64 LocalMTime(const char* path)
+{
+    WIN32_FILE_ATTRIBUTE_DATA fad;
+    if (!GetFileAttributesEx(path, GetFileExInfoStandard, &fad))
+        return 0;
+    ULARGE_INTEGER u;
+    u.LowPart = fad.ftLastWriteTime.dwLowDateTime;
+    u.HighPart = fad.ftLastWriteTime.dwHighDateTime;
+    // 100ns od 1601 -> sekundy od 1970
+    return (u.QuadPart - 116444736000000000ULL) / 10000000ULL;
+}
+
+// synchronizace: má se soubor přeskočit? (shodná velikost a lokální není starší)
+static bool SyncSkipDownload(const char* remote, const char* local)
+{
+    if (GetFileAttributes(local) == INVALID_FILE_ATTRIBUTES)
+        return false; // lokálně chybí -> stáhnout
+    unsigned __int64 lsize = LocalFileSize(local), rsize = 0;
+    unsigned long perms, uid, gid, rmtime;
+    if (!SftpConn.StatFull(remote, rsize, perms, uid, gid, rmtime))
+        return false;
+    if (lsize != rsize)
+        return false; // jiná velikost -> stáhnout
+    return LocalMTime(local) >= (unsigned __int64)rmtime; // shodná velikost a lokál není starší -> přeskočit
+}
+
+static bool SyncSkipUpload(const char* local, const char* remote)
+{
+    if (SftpConn.PathType(remote) != 1)
+        return false; // vzdáleně chybí -> nahrát
+    unsigned __int64 lsize = LocalFileSize(local), rsize = 0;
+    unsigned long perms, uid, gid, rmtime;
+    if (!SftpConn.StatFull(remote, rsize, perms, uid, gid, rmtime))
+        return false;
+    if (lsize != rsize)
+        return false;
+    return (unsigned __int64)rmtime >= LocalMTime(local); // shodná velikost a vzdálený není starší -> přeskočit
 }
 
 static bool SftpProgressCallback(void* ctx, const char* name, unsigned __int64 done, unsigned __int64 total)
@@ -1071,6 +1112,12 @@ static bool SftpDownloadRecursive(const char* remote, const char* local, bool is
 {
     if (!isDir)
     {
+        if (g_SyncMode) // synchronizace: bez ptaní, jen chybějící/změněné
+        {
+            if (SyncSkipDownload(remote, local))
+                return true;
+            return SftpConn.Download(remote, local);
+        }
         if (GetFileAttributes(local) != INVALID_FILE_ATTRIBUTES) // lokální soubor už existuje
         {
             unsigned __int64 localSize = LocalFileSize(local);
@@ -1119,6 +1166,12 @@ static bool SftpUploadRecursive(const char* local, const char* remote, bool isDi
 {
     if (!isDir)
     {
+        if (g_SyncMode) // synchronizace: bez ptaní, jen chybějící/změněné
+        {
+            if (SyncSkipUpload(local, remote))
+                return true;
+            return SftpConn.Upload(local, remote);
+        }
         if (SftpConn.PathType(remote) == 1) // vzdálený soubor už existuje
         {
             unsigned __int64 localSize = LocalFileSize(local);
@@ -1310,6 +1363,34 @@ void SftpCalcSize(HWND parent, const char* remoteDir, int panel)
                 "Velikost: %I64u bajtů (%.2f MB)\nSouborů: %d\nAdresářů: %d",
                 total, total / 1048576.0, files, dirs);
     SalamanderGeneral->SalMessageBox(parent, info, "Velikost na serveru", MB_OK | MB_ICONINFORMATION);
+}
+
+// synchronizace adresáře: direction 0 = stáhnout (server->PC), 1 = nahrát (PC->server).
+// Přenese jen chybějící a změněné soubory (porovnání velikost + čas).
+void SftpSyncDir(HWND parent, const char* remoteDir, const char* localDir, int direction)
+{
+    if (!SftpEnsureConnected(parent))
+        return;
+    SftpProgressBegin(parent);
+    g_SyncMode = 1;
+    bool ok;
+    if (direction == 0)
+        ok = SftpDownloadRecursive(remoteDir, localDir, true);
+    else
+        ok = SftpUploadRecursive(localDir, remoteDir, true);
+    g_SyncMode = 0;
+    SftpProgressEnd();
+    if (direction == 1)
+        SalamanderGeneral->PostChangeOnPathNotification(remoteDir, TRUE); // refresh vzdáleného panelu
+    if (!ok && !g_OvrCancel)
+    {
+        char eb[600];
+        _snprintf_s(eb, _TRUNCATE, "Synchronizace selhala:\n%s", SftpConn.LastError());
+        SalamanderGeneral->SalMessageBox(parent, eb, LoadStr(IDS_PLUGINNAME), MB_OK | MB_ICONEXCLAMATION);
+    }
+    else if (!g_OvrCancel)
+        SalamanderGeneral->SalMessageBox(parent, "Synchronizace dokončena.", LoadStr(IDS_PLUGINNAME),
+                                         MB_OK | MB_ICONINFORMATION);
 }
 
 BOOL WINAPI

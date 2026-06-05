@@ -91,6 +91,9 @@ public:
     typedef bool (*KbdPromptFn)(void* ctx, const char* prompt, bool echo, char* out, int outSize);
     static void SetKbdPromptCallback(KbdPromptFn cb, void* ctx) { KbdCb = cb; KbdCtx = ctx; }
 
+    // kódování názvů: 0 = Auto/UTF-8, 1 = UTF-8, 2 = Vypnuto (bez konverze)
+    static void SetEncoding(int e) { Encoding = e; }
+
     static bool GlobalInit();   // libssh2_init + WSAStartup
     static void GlobalExit();
 
@@ -120,6 +123,10 @@ private:
     static KbdPromptFn KbdCb;
     static void* KbdCtx;
     static std::string KnownHostsFile;
+    static int Encoding;
+    // převody názvů/cest mezi zobrazením (ANSI) a serverem (UTF-8)
+    std::string ToServerEnc(const char* in);  // ANSI -> UTF-8 (pro cesty posílané serveru)
+    std::string ToDisplayEnc(const char* in); // UTF-8 -> ANSI (pro názvy ze serveru)
 
     SOCKET Sock;
     LIBSSH2_SESSION* Session;
