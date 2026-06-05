@@ -372,38 +372,117 @@ CPluginFSInterface::GetRootPath(char* userPart)
     return TRUE;
 }
 
+// "//user@host[:port]" pro aktuální profil (předpona zobrazované cesty)
+static void SftpHostPrefix(char* out, int outSize)
+{
+    char portpart[16] = "";
+    if (SftpProfile.Port != 0 && SftpProfile.Port != 22)
+        _snprintf_s(portpart, _TRUNCATE, ":%d", SftpProfile.Port);
+    if (SftpProfile.User[0] != 0)
+        _snprintf_s(out, outSize, _TRUNCATE, "//%s@%s%s", SftpProfile.User, SftpProfile.Host, portpart);
+    else
+        _snprintf_s(out, outSize, _TRUNCATE, "//%s%s", SftpProfile.Host, portpart);
+}
+
+// z "//user@host/cesta" vrátí ukazatel na začátek vzdálené cesty (za hostitelem); jinak vrátí vstup
+static const char* SftpStripHost(const char* userPart)
+{
+    if (userPart != NULL && (userPart[0] == '/' || userPart[0] == '\\') &&
+        (userPart[1] == '/' || userPart[1] == '\\'))
+    {
+        const char* p = userPart + 2;
+        while (*p != 0 && *p != '/' && *p != '\\')
+            p++;
+        return (*p != 0) ? p : "/";
+    }
+    return userPart;
+}
+
+// pokud "//user@host[:port]/..." obsahuje jiného hostitele než aktuální profil, aktualizuj profil
+// a vynuť nové připojení (umožní zadat sftp://user@host/ přímo do adresního řádku)
+static void SftpParseHostInto(const char* userPart)
+{
+    if (userPart == NULL || (userPart[0] != '/' && userPart[0] != '\\') ||
+        (userPart[1] != '/' && userPart[1] != '\\'))
+        return;
+    const char* p = userPart + 2;
+    const char* slash = p;
+    while (*slash != 0 && *slash != '/' && *slash != '\\')
+        slash++;
+    int len = (int)(slash - p);
+    char buf[320];
+    if (len <= 0 || len >= (int)sizeof(buf))
+        return;
+    memcpy(buf, p, len);
+    buf[len] = 0;
+    char user[128] = "", host[256] = "";
+    char* hostpart = buf;
+    char* at = strchr(buf, '@');
+    if (at != NULL)
+    {
+        *at = 0;
+        lstrcpyn(user, buf, sizeof(user));
+        hostpart = at + 1;
+    }
+    int port = 22;
+    char* colon = strchr(hostpart, ':');
+    if (colon != NULL)
+    {
+        *colon = 0;
+        port = atoi(colon + 1);
+    }
+    lstrcpyn(host, hostpart, sizeof(host));
+    if (host[0] == 0)
+        return;
+    if (_stricmp(host, SftpProfile.Host) != 0 || (user[0] != 0 && _stricmp(user, SftpProfile.User) != 0))
+    {
+        lstrcpyn(SftpProfile.Host, host, sizeof(SftpProfile.Host));
+        if (user[0] != 0)
+            lstrcpyn(SftpProfile.User, user, sizeof(SftpProfile.User));
+        SftpProfile.Port = (port > 0) ? port : 22;
+        SftpProfile.Valid = true;
+        SftpConn.Disconnect(); // jiný server → nové připojení
+    }
+}
+
 BOOL WINAPI
 CPluginFSInterface::GetCurrentPath(char* userPart)
 {
-    strcpy(userPart, Path[0] != 0 ? Path : "/");
+    char prefix[320];
+    SftpHostPrefix(prefix, sizeof(prefix));
+    _snprintf_s(userPart, MAX_PATH, _TRUNCATE, "%s%s", prefix, Path[0] != 0 ? Path : "/");
     return TRUE;
 }
 
 BOOL WINAPI
 CPluginFSInterface::GetFullName(CFileData& file, int isDir, char* buf, int bufSize)
 {
+    char remote[MAX_PATH], prefix[320];
+    SftpHostPrefix(prefix, sizeof(prefix));
     if (isDir == 2) // up-dir
-    {
-        SftpParent(Path, buf, bufSize);
-        return TRUE;
-    }
-    SftpJoin(Path, file.Name, buf, bufSize);
+        SftpParent(Path, remote, MAX_PATH);
+    else
+        SftpJoin(Path, file.Name, remote, MAX_PATH);
+    _snprintf_s(buf, bufSize, _TRUNCATE, "%s%s", prefix, remote);
     return TRUE;
 }
 
 BOOL WINAPI
 CPluginFSInterface::GetFullFSPath(HWND parent, const char* fsName, char* path, int pathSize, BOOL& success)
 {
-    // 'path' je relativní nebo absolutní user-part; spoj s aktuální cestou a předřaď "fsName:"
+    // 'path' je relativní nebo absolutní user-part; spoj s aktuální cestou a předřaď "fsName://host"
+    const char* up = SftpStripHost(path);
     char full[MAX_PATH];
-    if (path[0] == '/')
-        lstrcpyn(full, path, MAX_PATH);
+    if (up[0] == '/')
+        lstrcpyn(full, up, MAX_PATH);
     else
-        SftpJoin(Path[0] != 0 ? Path : "/", path, full, MAX_PATH);
+        SftpJoin(Path[0] != 0 ? Path : "/", up, full, MAX_PATH);
     SftpNormalize(full);
-    success = (int)(strlen(full) + strlen(fsName) + 1) < pathSize;
+    char prefix[320];
+    SftpHostPrefix(prefix, sizeof(prefix));
+    success = (int)(strlen(full) + strlen(prefix) + strlen(fsName) + 1) < pathSize;
     if (success)
-        sprintf(path, "%s:%s", fsName, full);
+        sprintf(path, "%s:%s%s", fsName, prefix, full);
     else
         SalamanderGeneral->SalMessageBox(parent, "Cesta je příliš dlouhá.", LoadStr(IDS_PLUGINNAME),
                                          MB_OK | MB_ICONEXCLAMATION);
@@ -413,7 +492,7 @@ CPluginFSInterface::GetFullFSPath(HWND parent, const char* fsName, char* path, i
 BOOL WINAPI
 CPluginFSInterface::IsCurrentPath(int currentFSNameIndex, int fsNameIndex, const char* userPart)
 {
-    return currentFSNameIndex == fsNameIndex && SftpIsSamePath(Path, userPart);
+    return currentFSNameIndex == fsNameIndex && SftpIsSamePath(Path, SftpStripHost(userPart));
 }
 
 BOOL WINAPI
@@ -443,15 +522,20 @@ CPluginFSInterface::ChangePath(int currentFSNameIndex, char* fsName, int fsNameI
     PathError = FALSE;
 
     HWND parent = SalamanderGeneral->GetMsgBoxParent();
+
+    // z adresního řádku "sftp://user@host/" případně přepni na jiný server
+    if (!ConnectData.UseConnectData)
+        SftpParseHostInto(userPart);
+
     if (!SftpEnsureConnected(parent))
         return FALSE;
 
-    // urči vstupní cestu
+    // urči vstupní cestu (bez předpony //host)
     char path[MAX_PATH];
     if (*userPart == 0 && ConnectData.UseConnectData) // data z Connect dialogu
         lstrcpyn(path, ConnectData.UserPart, MAX_PATH);
     else
-        lstrcpyn(path, userPart, MAX_PATH);
+        lstrcpyn(path, SftpStripHost(userPart), MAX_PATH);
     if (path[0] == 0)
         strcpy(path, "/");
     // relativní cestu naváž na aktuální
@@ -981,6 +1065,8 @@ CPluginFSInterface::AcceptChangeOnPathNotification(const char* fsName, const cha
         userPart = path + fsNameLen + 1; // naše FS cesta
     else if (path[0] != '/')
         return; // disková nebo cizí cesta -> nás se netýká
+
+    userPart = SftpStripHost(userPart); // odřízni případnou předponu //host
 
     // refresh panelu, když se změna týká naší aktuální cesty (nebo jejího podstromu)
     if (SftpIsSamePath(userPart, Path) ||
@@ -1722,10 +1808,10 @@ CPluginFSInterface::CopyOrMoveFromFS(BOOL copy, int mode, const char* fsName, HW
 
     if (!diskPath)
     {
-        // cíl je na SFTP (sftp:/...) -> kopie v rámci serveru přes dočasný soubor
+        // cíl je na SFTP (sftp://host/...) -> kopie v rámci serveru přes dočasný soubor
         char* up = strchr(target, ':');
         char remoteTargetDir[MAX_PATH];
-        lstrcpyn(remoteTargetDir, (up != NULL) ? up + 1 : target, MAX_PATH);
+        lstrcpyn(remoteTargetDir, SftpStripHost((up != NULL) ? up + 1 : target), MAX_PATH);
         for (char* p = remoteTargetDir; *p; p++)
             if (*p == '\\')
                 *p = '/';
@@ -1868,10 +1954,10 @@ CPluginFSInterface::CopyOrMoveFromDiskToFS(BOOL copy, int mode, const char* fsNa
         return TRUE;
     }
 
-    // získej user-part cílové cesty (za "fsName:") a ořízni masku -> vzdálený adresář
+    // získej user-part cílové cesty (za "fsName://host") a ořízni masku -> vzdálený adresář
     char remoteDir[MAX_PATH];
     char* up = strchr(targetPath, ':');
-    lstrcpyn(remoteDir, (up != NULL) ? up + 1 : targetPath, MAX_PATH);
+    lstrcpyn(remoteDir, SftpStripHost((up != NULL) ? up + 1 : targetPath), MAX_PATH);
     for (char* p = remoteDir; *p; p++)
         if (*p == '\\')
             *p = '/';

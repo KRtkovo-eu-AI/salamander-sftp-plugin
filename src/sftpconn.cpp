@@ -181,7 +181,7 @@ bool CSftpConnection::Connect(const char* host, int port, const char* user, cons
             ScpMode = true;
             return true;
         }
-        SetError("SFTP inicializace");
+        ErrorMsg = "Server nepodporuje SFTP subsystém.\nZvolte protokol SCP nebo zapněte volbu „Povolit nouzově SCP\".";
         Disconnect();
         return false;
     }

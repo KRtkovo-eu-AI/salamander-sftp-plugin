@@ -440,7 +440,7 @@ CPluginInterfaceAbstract* WINAPI SalamanderPluginEntry(CSalamanderPluginEntryAbs
                                    FUNCTION_LOADSAVECONFIGURATION |
                                        FUNCTION_FILESYSTEM,
                                    VERSINFO_VERSION_NO_PLATFORM, VERSINFO_COPYRIGHT, LoadStr(IDS_PLUGIN_DESCRIPTION),
-                                   PluginNameShort, NULL, "dfs");
+                                   PluginNameShort, NULL, "sftp");
 
     // request notifications about master password creation, changes, and removal
     SalamanderGeneral->SetPluginUsesPasswordManager();
