@@ -1,0 +1,5 @@
+LIBRARY SFTP.SPL
+
+EXPORTS SalamanderPluginEntry
+EXPORTS SalamanderPluginGetReqVer
+EXPORTS SalamanderPluginGetSDKVer

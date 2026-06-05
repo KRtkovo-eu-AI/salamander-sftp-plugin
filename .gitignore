@@ -1,0 +1,12 @@
+*.obj
+*.pch
+*.pdb
+*.exp
+*.ilk
+*.idb
+*.tlog
+Intermediate/
+Debug/
+Release/
+*.user
+*.exe
