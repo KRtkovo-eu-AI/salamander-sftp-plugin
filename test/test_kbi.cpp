@@ -1,4 +1,4 @@
-// Test keyboard-interactive autentizace (server v KBI-only režimu na portu 2224).
+// Test keyboard-interactive authentication (server in KBI-only mode on port 2224).
 #include "sftpconn.h"
 #include <stdio.h>
 
@@ -8,7 +8,7 @@ int main()
 {
     if (!CSftpConnection::GlobalInit()) { printf("GlobalInit FAIL\n"); return 1; }
     CSftpConnection c;
-    // heslo "test" se má automaticky použít na první KBI výzvu (Heslo:)
+    // password "test" should be used automatically for the first KBI prompt (Password:)
     CHECK(c.Connect("127.0.0.1", 2224, "test", "test"), "connect keyboard-interactive");
     std::vector<CSftpEntry> e;
     CHECK(c.ListDir("/", e), "listdir pres KBI");

@@ -1,4 +1,4 @@
-﻿// Microsoft Visual C++ generated resource script.
+// Microsoft Visual C++ generated resource script.
 //
 #pragma code_page(65001)
 
@@ -112,67 +112,67 @@ END
 
 IDD_CONNECT DIALOGEX 20, 30, 348, 206
 STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_VISIBLE | WS_CAPTION | WS_SYSMENU
-CAPTION "SFTP - Přihlášení"
+CAPTION "SFTP - Login"
 FONT 8, "MS Shell Dlg", 400, 0, 0x1
 BEGIN
     CONTROL         "",IDC_CATTREE,"SysTreeView32",0x800000 | 0x1 | 0x2 | 0x4 | 0x20 | WS_BORDER | WS_TABSTOP,7,7,112,170
-    GROUPBOX        "Spojení",IDC_ST_PAGE0,126,3,214,90
-    LTEXT           "&Hostitel:",IDC_ST_PAGE0,133,15,90,8
+    GROUPBOX        "Connection",IDC_ST_PAGE0,126,3,214,90
+    LTEXT           "&Host:",IDC_ST_PAGE0,133,15,90,8
     EDITTEXT        IDC_HOST,133,25,150,12,ES_AUTOHSCROLL | WS_GROUP
-    LTEXT           "Č&íslo portu:",IDC_ST_PAGE0,290,15,46,8
+    LTEXT           "Port &number:",IDC_ST_PAGE0,290,15,46,8
     EDITTEXT        IDC_PORT,290,25,44,12,ES_AUTOHSCROLL | ES_NUMBER
-    LTEXT           "&Uživatelské jméno:",IDC_ST_PAGE0,133,43,100,8
+    LTEXT           "&User name:",IDC_ST_PAGE0,133,43,100,8
     EDITTEXT        IDC_USER,133,53,98,12,ES_AUTOHSCROLL
-    LTEXT           "He&slo:",IDC_ST_PAGE0,237,43,97,8
+    LTEXT           "Pa&ssword:",IDC_ST_PAGE0,237,43,97,8
     EDITTEXT        IDC_PASSWORD,237,53,83,12,ES_AUTOHSCROLL | ES_PASSWORD
     PUSHBUTTON      "",IDC_PWDEYE,321,52,15,13
-    LTEXT           "Soubor se soukromým &klíčem:",IDC_ST_PAGE0,133,71,170,8
+    LTEXT           "Private &key file:",IDC_ST_PAGE0,133,71,170,8
     EDITTEXT        IDC_KEYFILE,133,81,182,12,ES_AUTOHSCROLL
     PUSHBUTTON      "...",IDC_KEYBROWSE,318,81,16,12
-    GROUPBOX        "Protokol",IDC_ST_PAGE0,126,97,214,32
-    LTEXT           "Pře&nosový protokol:",IDC_ST_PAGE0,133,112,80,8
+    GROUPBOX        "Protocol",IDC_ST_PAGE0,126,97,214,32
+    LTEXT           "Transfer &protocol:",IDC_ST_PAGE0,133,112,80,8
     COMBOBOX        IDC_PROTOCOL,216,110,52,60,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    CONTROL         "Povolit nouzově &SCP",IDC_SCPFALLBACK,"Button",BS_AUTOCHECKBOX | BS_MULTILINE | WS_TABSTOP,278,107,58,18
-    LTEXT           "Po&čáteční vzdálený adresář na serveru:",IDC_ST_PAGE2,126,15,210,8
+    CONTROL         "Allow fallback &SCP",IDC_SCPFALLBACK,"Button",BS_AUTOCHECKBOX | BS_MULTILINE | WS_TABSTOP,278,107,58,18
+    LTEXT           "Initial remote &directory on server:",IDC_ST_PAGE2,126,15,210,8
     EDITTEXT        IDC_PATH,126,27,214,12,ES_AUTOHSCROLL
-    GROUPBOX        "Šifrování a komprese",IDC_ST_PAGE3,126,3,214,108
-    CONTROL         "Použít &kompresi přenosu (zlib)",IDC_SSHCOMPRESS,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,133,16,180,10
-    LTEXT           "&Kódování názvů souborů:",IDC_ST_PAGE3,133,32,110,8
+    GROUPBOX        "Encryption and compression",IDC_ST_PAGE3,126,3,214,108
+    CONTROL         "Use transfer &compression (zlib)",IDC_SSHCOMPRESS,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,133,16,180,10
+    LTEXT           "File name &encoding:",IDC_ST_PAGE3,133,32,110,8
     COMBOBOX        IDC_ENCODING,133,42,110,80,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    LTEXT           "Šifry, výměna klíčů i typy klíčů se sjednají automaticky podle serveru (vč. moderních: curve25519, ECDH/ECDSA, ed25519, AES-GCM, ChaCha20-Poly1305).",IDC_ST_PAGE3,133,62,200,44
+    LTEXT           "Ciphers, key exchange, and key types are negotiated automatically with the server (including modern ones: curve25519, ECDH/ECDSA, ed25519, AES-GCM, ChaCha20-Poly1305).",IDC_ST_PAGE3,133,62,200,44
     LISTBOX         IDC_SESSIONS,126,3,148,170,LBS_NOTIFY | WS_VSCROLL | WS_TABSTOP | NOT WS_VISIBLE
-    PUSHBUTTON      "&Nový",IDC_SESS_NEW,280,3,60,14,NOT WS_VISIBLE
-    PUSHBUTTON      "&Editovat",IDC_SESS_EDIT,280,21,60,14,NOT WS_VISIBLE
-    PUSHBUTTON      "&Odstranit",IDC_DELSESSION,280,39,60,14,NOT WS_VISIBLE
-    PUSHBUTTON      "Pře&jmenovat",IDC_SESS_RENAME,280,57,60,14,NOT WS_VISIBLE
-    PUSHBUTTON      "Nový &adresář",IDC_SESS_FOLDER,280,75,60,14,NOT WS_VISIBLE
-    PUSHBUTTON      "Jako &výchozí",IDC_SESS_DEFAULT,280,93,60,14,NOT WS_VISIBLE
-    CONTROL         "&Pokročilé volby",IDC_ADVANCED,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,187,90,10
-    DEFPUSHBUTTON   "&Přihlásit",IDOK,181,186,52,14,WS_GROUP
-    PUSHBUTTON      "&Uložit...",IDC_SAVESESSION,236,186,50,14
-    PUSHBUTTON      "Za&vřít",IDCANCEL,289,186,52,14
+    PUSHBUTTON      "&New",IDC_SESS_NEW,280,3,60,14,NOT WS_VISIBLE
+    PUSHBUTTON      "&Edit",IDC_SESS_EDIT,280,21,60,14,NOT WS_VISIBLE
+    PUSHBUTTON      "&Delete",IDC_DELSESSION,280,39,60,14,NOT WS_VISIBLE
+    PUSHBUTTON      "Re&name",IDC_SESS_RENAME,280,57,60,14,NOT WS_VISIBLE
+    PUSHBUTTON      "New &folder",IDC_SESS_FOLDER,280,75,60,14,NOT WS_VISIBLE
+    PUSHBUTTON      "Set as &default",IDC_SESS_DEFAULT,280,93,60,14,NOT WS_VISIBLE
+    CONTROL         "&Advanced options",IDC_ADVANCED,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,187,90,10
+    DEFPUSHBUTTON   "&Login",IDOK,181,186,52,14,WS_GROUP
+    PUSHBUTTON      "&Save...",IDC_SAVESESSION,236,186,50,14
+    PUSHBUTTON      "&Close",IDCANCEL,289,186,52,14
 END
 
 IDD_CHMOD DIALOGEX 30, 40, 200, 70
 STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_VISIBLE | WS_CAPTION | WS_SYSMENU
-CAPTION "Změnit práva (chmod)"
+CAPTION "Change permissions (chmod)"
 FONT 8, "MS Shell Dlg", 400, 0, 0x1
 BEGIN
-    LTEXT           "Unixová práva osmičkově (např. 644 nebo 755):",IDC_STATIC_1,7,9,186,8
+    LTEXT           "Unix permissions in octal (for example 644 or 755):",IDC_STATIC_1,7,9,186,8
     EDITTEXT        IDC_CHMODVAL,7,21,60,12,ES_AUTOHSCROLL | ES_NUMBER | WS_GROUP
     DEFPUSHBUTTON   "OK",IDOK,45,48,50,14,WS_GROUP
-    PUSHBUTTON      "Zrušit",IDCANCEL,105,48,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,105,48,50,14
 END
 
 IDD_INPUT DIALOGEX 30, 40, 240, 78
 STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_VISIBLE | WS_CAPTION | WS_SYSMENU
-CAPTION "SFTP – ověření"
+CAPTION "SFTP - Authentication"
 FONT 8, "MS Shell Dlg", 400, 0, 0x1
 BEGIN
     LTEXT           "",IDC_INPUTPROMPT,7,8,226,24
     EDITTEXT        IDC_INPUTVAL,7,36,226,12,ES_AUTOHSCROLL | WS_GROUP
     DEFPUSHBUTTON   "OK",IDOK,65,56,50,14,WS_GROUP
-    PUSHBUTTON      "Zrušit",IDCANCEL,125,56,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,125,56,50,14
 END
 
 IDD_PROGRESSDLG DIALOGEX 18, 80, 353, 77

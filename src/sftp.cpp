@@ -1,4 +1,4 @@
-﻿// SPDX-FileCopyrightText: 2023 Open Salamander Authors
+// SPDX-FileCopyrightText: 2023 Open Salamander Authors
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 //****************************************************************************
@@ -478,11 +478,11 @@ CPluginInterfaceAbstract* WINAPI SalamanderPluginEntry(CSalamanderPluginEntryAbs
     //  SalamanderGeneral->CallLoadOrSaveConfiguration(TRUE, TestLoadOrSaveConfiguration, (void *)0x1234);
 
     // test CopyTextToClipboard
-    //  BOOL success = SalamanderGeneral->CopyTextToClipboard("testíček", -1,
+    //  BOOL success = SalamanderGeneral->CopyTextToClipboard("test", -1,
     //                                                        TRUE, salamander->GetParentWindow());
 
     // test CopyTextToClipboardW
-    //  BOOL success = SalamanderGeneral->CopyTextToClipboardW(L"testíček", -1,
+    //  BOOL success = SalamanderGeneral->CopyTextToClipboardW(L"test", -1,
     //                                                         TRUE, salamander->GetParentWindow());
 
     // test SetPluginBugReportInfo
@@ -627,7 +627,7 @@ CPluginInterface::LoadConfiguration(HWND parent, HKEY regKey, CSalamanderRegistr
         registry->GetValue(regKey, CONFIG_DFSTYPEFIXEDWIDTH, REG_DWORD, &DFSTypeFixedWidth, sizeof(DWORD));
         registry->GetValue(regKey, CONFIG_DFSTYPEWIDTH, REG_DWORD, &DFSTypeWidth, sizeof(DWORD));
 
-        // načti uložené servery (profily)
+        // load saved servers (profiles)
         HKEY serversKey;
         if (registry->OpenKey(regKey, "Servers", serversKey))
         {
@@ -715,7 +715,7 @@ CPluginInterface::SaveConfiguration(HWND parent, HKEY regKey, CSalamanderRegistr
     registry->SetValue(regKey, CONFIG_DFSTYPEFIXEDWIDTH, REG_DWORD, &DFSTypeFixedWidth, sizeof(DWORD));
     registry->SetValue(regKey, CONFIG_DFSTYPEWIDTH, REG_DWORD, &DFSTypeWidth, sizeof(DWORD));
 
-    // ulož uložené servery (profily)
+    // save saved servers (profiles)
     HKEY serversKey;
     if (registry->CreateKey(regKey, "Servers", serversKey))
     {
@@ -763,14 +763,14 @@ CPluginInterface::Connect(HWND parent, CSalamanderConnectAbstract* salamander)
     CALL_STACK_MESSAGE1("CPluginInterface::Connect(,)");
 
 #if !defined(ENABLE_DYNAMICMENUEXT)
-    salamander->AddMenuItem(-1, "&Upravit soubor (server)", SALHOTKEY(VK_F4, 0), MENUCMD_EDITFILE, FALSE,
+    salamander->AddMenuItem(-1, "&Edit File (server)", SALHOTKEY(VK_F4, 0), MENUCMD_EDITFILE, FALSE,
                             MENU_EVENT_TRUE, MENU_EVENT_THIS_PLUGIN_FS | MENU_EVENT_FILE_FOCUSED, MENU_SKILLLEVEL_ALL);
-    salamander->AddMenuItem(-1, "&Spočítat velikost (server)", 0, MENUCMD_CALCSIZE, FALSE,
+    salamander->AddMenuItem(-1, "Calculate &Size (server)", 0, MENUCMD_CALCSIZE, FALSE,
                             MENU_EVENT_TRUE, MENU_EVENT_THIS_PLUGIN_FS, MENU_SKILLLEVEL_ALL);
-    salamander->AddMenuItem(-1, "S&ynchronizovat adresář…", 0, MENUCMD_SYNC, FALSE,
+    salamander->AddMenuItem(-1, "S&ynchronize Directory...", 0, MENUCMD_SYNC, FALSE,
                             MENU_EVENT_TRUE, MENU_EVENT_THIS_PLUGIN_FS, MENU_SKILLLEVEL_ALL);
     salamander->AddMenuItem(-1, NULL, 0, 0, FALSE, 0, 0, MENU_SKILLLEVEL_ALL); // separator
-    salamander->AddMenuItem(-1, "&Odpojit", 0, MENUCMD_DISCONNECT_ACTIVE, FALSE, MENU_EVENT_TRUE, MENU_EVENT_THIS_PLUGIN_FS, MENU_SKILLLEVEL_ALL);
+    salamander->AddMenuItem(-1, "&Disconnect", 0, MENUCMD_DISCONNECT_ACTIVE, FALSE, MENU_EVENT_TRUE, MENU_EVENT_THIS_PLUGIN_FS, MENU_SKILLLEVEL_ALL);
 #endif // !defined(ENABLE_DYNAMICMENUEXT)
 
     CGUIIconListAbstract* iconList = SalamanderGUI->CreateIconList();
