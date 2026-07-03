@@ -26,7 +26,7 @@ def get_hostkey():
 def get_ed25519_hostkey():
     if os.path.exists(ED25519_HOSTKEY_PATH):
         return paramiko.Ed25519Key(filename=ED25519_HOSTKEY_PATH)
-    # paramiko neumí generovat Ed25519 do souboru -> použij cryptography
+    # paramiko cannot generate Ed25519 into a file -> use cryptography
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
     from cryptography.hazmat.primitives import serialization
     pk = Ed25519PrivateKey.generate()
@@ -51,7 +51,7 @@ KBI_ONLY = os.environ.get("SFTP_KBI_ONLY", "0") == "1"  # jen keyboard-interacti
 class Server(paramiko.ServerInterface):
     def check_auth_password(self, username, password):
         if KBI_ONLY:
-            return paramiko.AUTH_FAILED  # vynutí keyboard-interactive
+            return paramiko.AUTH_FAILED  # force keyboard-interactive
         if username == USER and password == PASSWORD:
             return paramiko.AUTH_SUCCESSFUL
         return paramiko.AUTH_FAILED
@@ -106,7 +106,7 @@ class StubSFTPHandle(paramiko.SFTPHandle):
 
 class StubSFTPServer(paramiko.SFTPServerInterface):
     ROOT = ROOT
-    PERMS = {}  # simulace unix práv (Windows je neumí) path->mode
+    PERMS = {}  # simulate Unix permissions (Windows does not support them) path->mode
     def _realpath(self, path):
         return self.ROOT + self.canonicalize(path)
     def list_folder(self, path):
@@ -124,7 +124,7 @@ class StubSFTPServer(paramiko.SFTPServerInterface):
         try:
             a = paramiko.SFTPAttributes.from_stat(os.stat(self._realpath(path)))
             rp = self._realpath(path)
-            if rp in StubSFTPServer.PERMS:  # simulace unix práv
+            if rp in StubSFTPServer.PERMS:  # simulate Unix permissions
                 a.st_mode = (a.st_mode & ~0o777) | StubSFTPServer.PERMS[rp]
             return a
         except OSError as e:
@@ -213,7 +213,7 @@ def handle(client):
         # omez algoritmy na ty, ktere libssh2/WinCNG umi (RSA + DH group14)
         so = t.get_security_options()
         if MODERN_ONLY:
-            # jen moderní algoritmy, které starý WinCNG backend NEUMĚL
+            # only modern algorithms that the old WinCNG backend DID NOT support
             try:
                 so.kex = ("curve25519-sha256", "curve25519-sha256@libssh.org")
                 so.ciphers = ("chacha20-poly1305@openssh.com", "aes256-gcm@openssh.com")

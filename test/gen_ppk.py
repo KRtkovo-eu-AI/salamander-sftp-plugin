@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Vygeneruje PuTTY .ppk v2 (nešifrovaný) z OpenSSH RSA klíče sftp_testkey.
-Slouží k testu .ppk parseru pluginu. MAC je dummy (parser ho ignoruje)."""
+"""Generate an unencrypted PuTTY .ppk v2 file from the OpenSSH RSA key sftp_testkey.
+Used to test the plugin .ppk parser. The MAC is a dummy value (the parser ignores it)."""
 import struct, base64, paramiko
 
 KEY = r"D:\weby\sftp_testkey"

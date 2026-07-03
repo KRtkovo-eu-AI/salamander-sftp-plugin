@@ -1,4 +1,4 @@
-﻿// SPDX-FileCopyrightText: 2023 Open Salamander Authors
+// SPDX-FileCopyrightText: 2023 Open Salamander Authors
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 //****************************************************************************
@@ -11,7 +11,7 @@
 
 #include "precomp.h"
 #include "sftpglue.h"
-#include <shlobj.h> // SHBrowseForFolder (výběr lokálního adresáře pro synchronizaci)
+#include <shlobj.h> // SHBrowseForFolder (select a local directory for synchronization)
 
 // ****************************************************************************
 // MENU SECTION
@@ -159,12 +159,12 @@ CPluginInterfaceForMenuExt::ExecuteMenuItem(CSalamanderForOperationsAbstract* sa
             return TRUE;
         char remoteDir[MAX_PATH];
         lstrcpyn(remoteDir, fs->Path, MAX_PATH);
-        // vyber lokální adresář
+        // select a local directory
         char localDir[MAX_PATH] = "";
         BROWSEINFO bi;
         memset(&bi, 0, sizeof(bi));
         bi.hwndOwner = parent;
-        bi.lpszTitle = "Vyberte lokální adresář pro synchronizaci:";
+        bi.lpszTitle = "Select a local directory for synchronization:";
         bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
         LPITEMIDLIST pidl = SHBrowseForFolder(&bi);
         if (pidl == NULL)
@@ -174,11 +174,11 @@ CPluginInterfaceForMenuExt::ExecuteMenuItem(CSalamanderForOperationsAbstract* sa
         if (localDir[0] == 0)
             return TRUE;
         int r = SalamanderGeneral->SalMessageBox(parent,
-                                                 "Směr synchronizace:\n\n"
-                                                 "Ano = Stáhnout (server → PC)\n"
-                                                 "Ne = Nahrát (PC → server)\n"
-                                                 "Zrušit = storno",
-                                                 "Synchronizace adresáře", MB_YESNOCANCEL | MB_ICONQUESTION);
+                                                 "Synchronization direction:\n\n"
+                                                 "Yes = Download (server -> PC)\n"
+                                                 "No = Upload (PC -> server)\n"
+                                                 "Cancel = abort",
+                                                 "Directory synchronization", MB_YESNOCANCEL | MB_ICONQUESTION);
         if (r == IDCANCEL)
             return TRUE;
         SftpSyncDir(parent, remoteDir, localDir, r == IDYES ? 0 : 1);
@@ -359,7 +359,7 @@ CPluginInterfaceForMenuExt::ExecuteMenuItem(CSalamanderForOperationsAbstract* sa
         char table[256];
         if (SalamanderGeneral->GetConversionTable(NULL, table, conversion))
         {
-          char buf[20] = "ľlu»oučký kůň";   // text to convert
+          char buf[20] = "sample text";   // text to convert
 
           // RecognizeFileType test: verify whether 'buf' is detected as text with the ISO-2 code page
           BOOL isText;

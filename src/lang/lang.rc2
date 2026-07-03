@@ -1,4 +1,4 @@
-﻿//****************************************************************************
+//****************************************************************************
 //
 // Copyright (c) 2023 Open Salamander Authors
 //
@@ -23,8 +23,8 @@
 STRINGTABLE
 {
  IDS_PLUGINNAME,             "SFTP"
- IDS_ABOUT,                  "O pluginu SFTP"
- IDS_PLUGIN_DESCRIPTION,     "SFTP klient (SSH File Transfer Protocol) postavený na libssh2."
+ IDS_ABOUT,                  "About SFTP plugin"
+ IDS_PLUGIN_DESCRIPTION,     "SFTP client (SSH File Transfer Protocol) built on libssh2."
  IDS_PLUGIN_HOME,            "www.altap.cz"
  IDS_PLUGIN_BUGREP,          "An exception in Sftp has occured, please inform authors!\nIf you have worked with some .dop file when exception has occured,\nplease try to reproduce the bug with this .dop file and if exception\noccurs again, send us this .dop file (we will reproduce and fix the bug).\nThanks!"
  IDS_PLUGIN_EMAIL,           "petr.solin@altap.cz"
