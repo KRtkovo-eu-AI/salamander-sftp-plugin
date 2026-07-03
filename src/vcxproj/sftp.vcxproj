@@ -215,7 +215,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="lang_sftp.vcxproj">
-      <Project>{3742bd58-b25b-46a6-9834-60fe8819e3d6}</Project>
+      <Project>{2D3A2ADD-498B-4420-8E08-6A9FC9C09D5E}</Project>
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
     </ProjectReference>
   </ItemGroup>
