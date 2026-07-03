@@ -116,30 +116,30 @@ CAPTION "SFTP - Login"
 FONT 8, "MS Shell Dlg", 400, 0, 0x1
 BEGIN
     CONTROL         "",IDC_CATTREE,"SysTreeView32",0x800000 | 0x1 | 0x2 | 0x4 | 0x20 | WS_BORDER | WS_TABSTOP,7,7,112,170
-    GROUPBOX        "Connection",IDC_ST_PAGE0,126,3,214,90
-    LTEXT           "&Host:",IDC_ST_PAGE0,133,15,90,8
+    GROUPBOX        "Connection",IDC_ST_PAGE0_CONNECTION,126,3,214,90
+    LTEXT           "&Host:",IDC_ST_PAGE0_HOST,133,15,90,8
     EDITTEXT        IDC_HOST,133,25,150,12,ES_AUTOHSCROLL | WS_GROUP
-    LTEXT           "Port &number:",IDC_ST_PAGE0,290,15,46,8
+    LTEXT           "Port &number:",IDC_ST_PAGE0_PORT,290,15,46,8
     EDITTEXT        IDC_PORT,290,25,44,12,ES_AUTOHSCROLL | ES_NUMBER
-    LTEXT           "&User name:",IDC_ST_PAGE0,133,43,100,8
+    LTEXT           "&User name:",IDC_ST_PAGE0_USER,133,43,100,8
     EDITTEXT        IDC_USER,133,53,98,12,ES_AUTOHSCROLL
-    LTEXT           "Pa&ssword:",IDC_ST_PAGE0,237,43,97,8
+    LTEXT           "Pa&ssword:",IDC_ST_PAGE0_PASSWORD,237,43,97,8
     EDITTEXT        IDC_PASSWORD,237,53,83,12,ES_AUTOHSCROLL | ES_PASSWORD
     PUSHBUTTON      "",IDC_PWDEYE,321,52,15,13
-    LTEXT           "Private &key file:",IDC_ST_PAGE0,133,71,170,8
+    LTEXT           "Private &key file:",IDC_ST_PAGE0_KEYFILE,133,71,170,8
     EDITTEXT        IDC_KEYFILE,133,81,182,12,ES_AUTOHSCROLL
     PUSHBUTTON      "...",IDC_KEYBROWSE,318,81,16,12
-    GROUPBOX        "Protocol",IDC_ST_PAGE0,126,97,214,32
-    LTEXT           "Transfer &protocol:",IDC_ST_PAGE0,133,112,80,8
+    GROUPBOX        "Protocol",IDC_ST_PAGE0_PROTOCOL,126,97,214,32
+    LTEXT           "Transfer &protocol:",IDC_ST_PAGE0_PROTOCOL_LABEL,133,112,80,8
     COMBOBOX        IDC_PROTOCOL,216,110,52,60,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     CONTROL         "Allow fallback &SCP",IDC_SCPFALLBACK,"Button",BS_AUTOCHECKBOX | BS_MULTILINE | WS_TABSTOP,278,107,58,18
-    LTEXT           "Initial remote &directory on server:",IDC_ST_PAGE2,126,15,210,8
+    LTEXT           "Initial remote &directory on server:",IDC_ST_PAGE2_DIR,126,15,210,8
     EDITTEXT        IDC_PATH,126,27,214,12,ES_AUTOHSCROLL
-    GROUPBOX        "Encryption and compression",IDC_ST_PAGE3,126,3,214,108
+    GROUPBOX        "Encryption and compression",IDC_ST_PAGE3_ENCRYPTION,126,3,214,108
     CONTROL         "Use transfer &compression (zlib)",IDC_SSHCOMPRESS,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,133,16,180,10
-    LTEXT           "File name &encoding:",IDC_ST_PAGE3,133,32,110,8
+    LTEXT           "File name &encoding:",IDC_ST_PAGE3_ENCODING,133,32,110,8
     COMBOBOX        IDC_ENCODING,133,42,110,80,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    LTEXT           "Ciphers, key exchange, and key types are negotiated automatically with the server (including modern ones: curve25519, ECDH/ECDSA, ed25519, AES-GCM, ChaCha20-Poly1305).",IDC_ST_PAGE3,133,62,200,44
+    LTEXT           "Ciphers, key exchange, and key types are negotiated automatically with the server (including modern ones: curve25519, ECDH/ECDSA, ed25519, AES-GCM, ChaCha20-Poly1305).",IDC_ST_PAGE3_CIPHERS,133,62,200,44
     LISTBOX         IDC_SESSIONS,126,3,148,170,LBS_NOTIFY | WS_VSCROLL | WS_TABSTOP | NOT WS_VISIBLE
     PUSHBUTTON      "&New",IDC_SESS_NEW,280,3,60,14,NOT WS_VISIBLE
     PUSHBUTTON      "&Edit",IDC_SESS_EDIT,280,21,60,14,NOT WS_VISIBLE

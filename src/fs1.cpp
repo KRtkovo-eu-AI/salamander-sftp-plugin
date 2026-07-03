@@ -262,7 +262,14 @@ static int ControlPage(int id)
 {
     switch (id)
     {
-    case IDC_ST_PAGE0:
+    case IDC_ST_PAGE0_CONNECTION:
+    case IDC_ST_PAGE0_HOST:
+    case IDC_ST_PAGE0_PORT:
+    case IDC_ST_PAGE0_USER:
+    case IDC_ST_PAGE0_PASSWORD:
+    case IDC_ST_PAGE0_KEYFILE:
+    case IDC_ST_PAGE0_PROTOCOL:
+    case IDC_ST_PAGE0_PROTOCOL_LABEL:
     case IDC_HOST:
     case IDC_PORT:
     case IDC_USER:
@@ -281,10 +288,12 @@ static int ControlPage(int id)
     case IDC_SESS_FOLDER:
     case IDC_SESS_DEFAULT:
         return 1; // Uložená spojení
-    case IDC_ST_PAGE2:
+    case IDC_ST_PAGE2_DIR:
     case IDC_PATH:
         return 2; // Adresáře
-    case IDC_ST_PAGE3:
+    case IDC_ST_PAGE3_ENCRYPTION:
+    case IDC_ST_PAGE3_ENCODING:
+    case IDC_ST_PAGE3_CIPHERS:
     case IDC_SSHCOMPRESS:
     case IDC_ENCODING:
         return 3; // SSH (šifrování a komprese)
