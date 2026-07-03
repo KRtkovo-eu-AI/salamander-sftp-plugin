@@ -1,6 +1,7 @@
-// Test nových funkcí: host key (known_hosts), resume přenosu, .ppk klíč.
+// Tests for host keys (known_hosts), transfer resume, and .ppk keys.
 #include "sftpconn.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string>
 
 #define CHECK(cond, what) do { if(!(cond)) { printf("FAIL %s: %s\n", what, c.LastError()); return 1; } printf("OK   %s\n", what); } while(0)
@@ -9,89 +10,113 @@ static int g_hostKeyCalls = 0;
 static int HostKeyCb(void*, const char* host, int port, const char* type, const char* fp, int status)
 {
     g_hostKeyCalls++;
-    printf("   [hostkey] %s:%d typ=%s status=%d fp=%.20s...\n", host, port, type, status, fp);
-    return 2; // důvěřovat a uložit
+    printf("   [hostkey] %s:%d type=%s status=%d fp=%.20s...\n", host, port, type, status, fp);
+    return 2; // trust and save
+}
+
+static std::string LocalTestPath(const char* file)
+{
+    const char* root = getenv("SFTP_TEST_DATA_DIR");
+    if (root == nullptr || root[0] == 0) root = getenv("TEMP");
+    if (root == nullptr || root[0] == 0) root = getenv("TMP");
+    if (root == nullptr || root[0] == 0) root = ".";
+    std::string path(root);
+    if (!path.empty() && path.back() != '\\' && path.back() != '/') path += '\\';
+    path += file;
+    return path;
+}
+
+static bool WriteTestFile(const char* path, size_t size)
+{
+    FILE* f = nullptr;
+    fopen_s(&f, path, "wb");
+    if (!f) return false;
+    for (size_t i = 0; i < size; ++i) { fputc((int)(i % 251), f); }
+    fclose(f);
+    return true;
 }
 
 int main()
 {
     if (!CSftpConnection::GlobalInit()) { printf("GlobalInit FAIL\n"); return 1; }
+    std::string resumeSource = LocalTestPath("resume_src_local.bin");
+    if (!WriteTestFile(resumeSource.c_str(), 128 * 1024)) { printf("FAIL create local resume fixture\n"); return 1; }
 
-    const char* KH = "D:\\weby\\sftp_plugin_dev\\test_known_hosts";
-    remove(KH);
-    CSftpConnection::SetKnownHostsFile(KH);
+    std::string knownHosts = LocalTestPath("test_known_hosts");
+    remove(knownHosts.c_str());
+    CSftpConnection::SetKnownHostsFile(knownHosts.c_str());
     CSftpConnection::SetHostKeyCallback(HostKeyCb, nullptr);
 
-    // --- 1) Host key: první připojení (neznámý -> uloží) ---
+    // --- 1) Host key: first connection (unknown -> saved) ---
     {
         CSftpConnection c;
-        CHECK(c.Connect("127.0.0.1", 2222, "test", "test"), "1.connect (novy host key)");
+        CHECK(c.Connect("127.0.0.1", 2222, "test", "test"), "1.connect (new host key)");
         c.Disconnect();
-        printf("   hostkey callback volan %dx (cekam 1)\n", g_hostKeyCalls);
-        if (g_hostKeyCalls != 1) { printf("FAIL: callback se nevolal\n"); return 1; }
+        printf("   hostkey callback called %dx (expected 1)\n", g_hostKeyCalls);
+        if (g_hostKeyCalls != 1) { printf("FAIL: callback was not called\n"); return 1; }
     }
-    // --- 2) Druhé připojení: host key už uložen -> MATCH, bez callbacku ---
+    // --- 2) Second connection: host key already saved -> MATCH, no callback ---
     {
         CSftpConnection c;
-        CHECK(c.Connect("127.0.0.1", 2222, "test", "test"), "2.connect (znamy host key)");
+        CHECK(c.Connect("127.0.0.1", 2222, "test", "test"), "2.connect (known host key)");
         c.Disconnect();
-        printf("   hostkey callback celkem %dx (cekam porad 1 = MATCH)\n", g_hostKeyCalls);
-        if (g_hostKeyCalls != 1) { printf("FAIL: known_hosts MATCH nefunguje (callback %d)\n", g_hostKeyCalls); return 1; }
+        printf("   hostkey callback total %dx (still expected 1 = MATCH)\n", g_hostKeyCalls);
+        if (g_hostKeyCalls != 1) { printf("FAIL: known_hosts MATCH failed (callback %d)\n", g_hostKeyCalls); return 1; }
     }
 
-    CSftpConnection::SetHostKeyCallback(nullptr, nullptr); // dál netřeba
+    CSftpConnection::SetHostKeyCallback(nullptr, nullptr); // no longer needed
 
-    // --- 3) Resume přenosu (SFTP) ---
+    // --- 3) Transfer resume (SFTP) ---
     {
         CSftpConnection c;
         CHECK(c.Connect("127.0.0.1", 2222, "test", "test"), "3.connect");
-        // nahraj zdroj
-        CHECK(c.Upload("D:\\weby\\sftp_plugin_dev\\sftpconn.cpp", "/resume_src.bin"), "upload zdroj");
+        // upload source
+        CHECK(c.Upload(LocalTestPath("resume_src_local.bin").c_str(), "/resume_src.bin"), "upload source");
         unsigned __int64 rsize = 0;
         CHECK(c.RemoteFileSize("/resume_src.bin", rsize), "remotefilesize");
-        printf("   velikost vzdaleneho: %I64u\n", rsize);
+        printf("   remote size: %I64u\n", rsize);
 
-        // plné stažení = referenční
-        CHECK(c.Download("/resume_src.bin", "D:\\weby\\sftp_plugin_dev\\ref.bin"), "plne stazeni (ref)");
+        // full download = reference
+        CHECK(c.Download("/resume_src.bin", LocalTestPath("ref.bin").c_str()), "full download (ref)");
 
-        // vytvoř částečný soubor = první polovina ref.bin
+        // create partial file = first half of ref.bin
         unsigned __int64 half = rsize / 2;
         {
-            FILE* r = nullptr; fopen_s(&r, "D:\\weby\\sftp_plugin_dev\\ref.bin", "rb");
-            FILE* p = nullptr; fopen_s(&p, "D:\\weby\\sftp_plugin_dev\\part.bin", "wb");
+            FILE* r = nullptr; fopen_s(&r, LocalTestPath("ref.bin").c_str(), "rb");
+            FILE* p = nullptr; fopen_s(&p, LocalTestPath("part.bin").c_str(), "wb");
             char* b = new char[(size_t)half];
             fread(b, 1, (size_t)half, r);
             fwrite(b, 1, (size_t)half, p);
             delete[] b; fclose(r); fclose(p);
         }
-        // resume od poloviny
-        CHECK(c.Download("/resume_src.bin", "D:\\weby\\sftp_plugin_dev\\part.bin", half), "resume download od poloviny");
+        // resume from the halfway point
+        CHECK(c.Download("/resume_src.bin", LocalTestPath("part.bin").c_str(), half), "resume download from halfway");
 
-        // porovnej part.bin == ref.bin
+        // compare part.bin == ref.bin
         auto readall = [](const char* path, std::string& out)->bool{
             FILE* f=nullptr; fopen_s(&f,path,"rb"); if(!f) return false;
             char b[65536]; size_t n; while((n=fread(b,1,sizeof(b),f))>0) out.append(b,n); fclose(f); return true; };
         std::string a, b;
-        readall("D:\\weby\\sftp_plugin_dev\\ref.bin", a);
-        readall("D:\\weby\\sftp_plugin_dev\\part.bin", b);
+        readall(LocalTestPath("ref.bin").c_str(), a);
+        readall(LocalTestPath("part.bin").c_str(), b);
         printf("   ref=%zu B, resumed=%zu B\n", a.size(), b.size());
-        if (a != b) { printf("FAIL: resume data nesedi\n"); return 1; }
-        printf("OK   resume data sedi (byte-exact)\n");
+        if (a != b) { printf("FAIL: resume data mismatch\n"); return 1; }
+        printf("OK   resume data matches (byte-exact)\n");
         c.RemoveFile("/resume_src.bin");
         c.Disconnect();
     }
 
-    // --- 4) .ppk klíč (RSA, nešifrovaný) ---
+    // --- 4) .ppk key (RSA, unencrypted) ---
     {
         CSftpConnection c;
-        CHECK(c.Connect("127.0.0.1", 2222, "test", "", "D:\\weby\\sftp_testkey.ppk"), "4.connect pres .ppk");
+        CHECK(c.Connect("127.0.0.1", 2222, "test", "", LocalTestPath("sftp_testkey.ppk").c_str()), "4.connect with .ppk");
         std::vector<CSftpEntry> e;
-        CHECK(c.ListDir("/", e), "listdir pres .ppk klic");
-        printf("   .ppk: vypsano %d polozek\n", (int)e.size());
+        CHECK(c.ListDir("/", e), "listdir with .ppk key");
+        printf("   .ppk: listed %d items\n", (int)e.size());
         c.Disconnect();
     }
 
     CSftpConnection::GlobalExit();
-    printf("\n=== VSECHNY TESTY NOVYCH FUNKCI OK ===\n");
+    printf("\n=== ALL NEW FEATURE TESTS OK ===\n");
     return 0;
 }
