@@ -13,7 +13,7 @@
     </ClCompile>
     <Link>
       <AdditionalLibraryDirectories>..\..\..\shared\libs\$(ShortPlatform);$(SftpVcpkgDir)\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>libssh2.lib;libcrypto.lib;ws2_32.lib;delayimp.lib;shell32.lib;ole32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>libssh2.lib;libcrypto.lib;ws2_32.lib;delayimp.lib;shell32.lib;ole32.lib;MSImg32.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <DelayLoadDLLs>libssh2.dll;libcrypto-3-x64.dll;%(DelayLoadDLLs)</DelayLoadDLLs>
     </Link>
     <ResourceCompile>
