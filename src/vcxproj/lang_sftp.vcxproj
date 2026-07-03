@@ -20,7 +20,7 @@
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>16.0</VCProjectVersion>
-    <ProjectGuid>{3742BD58-B25B-46A6-9834-60FE8819E3D6}</ProjectGuid>
+    <ProjectGuid>{2D3A2ADD-498B-4420-8E08-6A9FC9C09D5E}</ProjectGuid>
     <RootNamespace>lang_sftp</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
     <Keyword>Win32Proj</Keyword>
