@@ -118,14 +118,7 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
       <LanguageStandard>stdcpplatest</LanguageStandard>
-      <AdditionalIncludeDirectories>D:\weby\vcpkg\installed\x64-windows\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <AdditionalOptions>/source-charset:utf-8 /execution-charset:windows-1250 %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
-    <Link>
-      <AdditionalLibraryDirectories>D:\weby\vcpkg\installed\x64-windows\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>libssh2.lib;libcrypto.lib;ws2_32.lib;delayimp.lib;shell32.lib;ole32.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <DelayLoadDLLs>libssh2.dll;libcrypto-3-x64.dll;%(DelayLoadDLLs)</DelayLoadDLLs>
-    </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="..\sftpconn.cpp">
