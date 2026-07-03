@@ -5,6 +5,11 @@
   <PropertyGroup Label="UserMacros">
     <ShortProjectName>sftp</ShortProjectName>
   </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ResourceCompile>
+      <AdditionalIncludeDirectories>..\..\..\shared;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+  </ItemDefinitionGroup>
   <ItemGroup>
     <BuildMacro Include="ShortProjectName">
       <Value>$(ShortProjectName)</Value>
