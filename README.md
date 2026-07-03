@@ -98,7 +98,20 @@ Vše se **sjednává automaticky** podle serveru:
 
 ## Sestavení
 
-**Požadavky:** Visual Studio Build Tools 2022 (x64), Open Salamander SDK (tento plugin je součástí stromu `salamander/src/plugins/sftp`), libssh2 + OpenSSL přes vcpkg (`vcpkg install libssh2:x64-windows`).
+**Požadavky:** Visual Studio Build Tools 2022 (x64), Open Salamander SDK (tento plugin je součástí stromu `salamander/src/plugins/sftp`), libssh2 + OpenSSL přes vcpkg.
+
+Nejdřív nainstaluj závislosti přes centrální build skript:
+
+```powershell
+.\tools\vcpkg\build-third-party-libs.ps1 -SftpPlugin
+```
+
+Tento příkaz:
+1. naklonuje a bootstrapne vcpkg (pokud ještě není),
+2. nainstaluje `libssh2` + `openssl` (3.x) do `build/vcpkg_installed_sftp/`,
+3. zkopíruje DLL pro UnRAR a FTP plugin do `build/libs/` (původní funkce).
+
+Pak sestav plugin:
 
 ```powershell
 MSBuild src\vcxproj\sftp.vcxproj /p:Configuration=Release /p:Platform=x64
