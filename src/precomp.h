@@ -37,7 +37,7 @@
 //       in Project Settings. Sftp defines it here just to make adding/removing easier.
 #define SFTP_COMPATIBLE_WITH_500
 
-// potlač demo dialogy/prompty zděděné z demoplug
+// suppress demo dialogs/prompts inherited from demoplug
 #define SFTP_QUIET
 
 #ifdef SFTP_COMPATIBLE_WITH_500

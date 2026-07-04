@@ -23,7 +23,7 @@
 
 #include "spl_vers.h" // Extract version and build numbers.
 
-// označení "beta" ve verzi tohoto pluginu (jen pro SFTP, nemění sdílený spl_vers.h)
+// "beta" label in plugin version (SFTP only, does not change shared spl_vers.h)
 #undef VERSINFO_BETAVERSION_TXT
 #undef VERSINFO_BETAVERSION_TXT_NO_PLATFORM
 #define VERSINFO_BETAVERSION_TXT " beta (" SAL_VER_PLATFORM ")"
@@ -32,7 +32,7 @@
 #define VERSINFO_COPYRIGHT   "Copyright © 2026 Dupl3xx"
 #define VERSINFO_COMPANY     "Dupl3xx"
 
-#define VERSINFO_DESCRIPTION "SFTP/SCP klient pro Open Salamander"
+#define VERSINFO_DESCRIPTION "SFTP/SCP client for Open Salamander"
 
 #ifdef _LANG
 #define VERSINFO_INTERNAL    "ENGLISH"

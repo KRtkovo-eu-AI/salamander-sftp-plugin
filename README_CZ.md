@@ -46,7 +46,7 @@ Vše se **sjednává automaticky** podle serveru:
 - Pamatuje si protokol, kompresi i SCP fallback per spojení
 
 ### Lokalizace
-- České i anglické rozhraní; jazykové moduly (`.slg`) pro **všech 11 jazyků** Sally buildu, takže v žádné jazykové verzi Salamandera nevyskočí chyba/výběr jazyka.
+- České i anglické rozhraní; jazykové moduly (`.slg`) pro **všech 11 jazyků** Salamander buildu, takže v žádné jazykové verzi Salamandera nevyskočí chyba/výběr jazyka.
 
 ---
 
@@ -118,15 +118,6 @@ MSBuild src\vcxproj\sftp.vcxproj /p:Configuration=Release /p:Platform=x64
 ```
 
 Výstup: `sftp.spl` + `lang\english.slg`. Ostatní jazyky se generují kopií (viz `bin/lang/`).
-
----
-
-## Nasazení (`bin/`)
-
-Do `plugins\sftp\` instalace Salamandera zkopírovat:
-- `sftp.spl`
-- `lang\*.slg` (11 jazyků)
-- `libssh2.dll`, `libcrypto-3-x64.dll`, `libssl-3-x64.dll`, `z.dll`, `legacy.dll`
 
 ---
 

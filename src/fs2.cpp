@@ -137,7 +137,7 @@ CDeleteProgressDlg::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
             {
                 FlushDataToControls();
 
-                if (SalamanderGeneral->SalMessageBox(HWindow, "Opravdu přerušit operaci?", "SFTP",
+                if (SalamanderGeneral->SalMessageBox(HWindow, "Really cancel operation?", "SFTP",
                                                      MB_YESNO | MB_ICONQUESTION) == IDYES)
                 {
                     WantCancel = TRUE;
@@ -154,7 +154,7 @@ CDeleteProgressDlg::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 //
 // ****************************************************************************
-// Progress přenosu (s rychlostí)
+// Transfer progress (with speed)
 //
 
 static CDeleteProgressDlg* g_ProgDlg = NULL;
@@ -162,13 +162,13 @@ static HWND g_ProgMainWnd = NULL;
 static char g_ProgFile[MAX_PATH] = "";
 static DWORD g_ProgStartTick = 0;
 
-// stav přepisování souborů během přenosu
+// file overwrite state during transfer
 static HWND g_OvrParent = NULL;
-static int g_OvrMode = 0;        // 0 = ptát se, 1 = přepsat vše, 2 = přeskočit vše
-static bool g_OvrCancel = false; // uživatel zvolil Zrušit
-static int g_SyncMode = 0;       // 1 = synchronizace (přeskoč shodné, neptej se)
+static int g_OvrMode = 0;        // 0 = ask, 1 = overwrite all, 2 = skip all
+static bool g_OvrCancel = false; // user chose Cancel
+static int g_SyncMode = 0;       // 1 = synchronization (skip matching, don't ask)
 
-// vrací: 1 = přepsat, 0 = přeskočit, -1 = zrušit celou operaci
+// returns: 1 = overwrite, 0 = skip, -1 = cancel whole operation
 static int SftpAskOverwrite(const char* targetName)
 {
     if (g_OvrMode == 1)
@@ -182,7 +182,7 @@ static int SftpAskOverwrite(const char* targetName)
     base = (base != NULL) ? base + 1 : targetName;
     int r = SalamanderGeneral->DialogOverwrite(g_OvrParent != NULL ? g_OvrParent : g_ProgMainWnd,
                                                BUTTONS_YESALLSKIPCANCEL,
-                                               base, "cílový soubor", base, "zdroj");
+                                               base, "target file", base, "source");
     switch (r)
     {
     case DIALOG_YES:
@@ -200,7 +200,7 @@ static int SftpAskOverwrite(const char* targetName)
     }
 }
 
-// částečně existující cíl: 1 = navázat, 2 = přenést znovu, -1 = zrušit
+// partially existing target: 1 = resume, 2 = transfer again, -1 = cancel
 static int SftpAskResume(const char* targetName, unsigned __int64 have, unsigned __int64 total)
 {
     const char* base = strrchr(targetName, '\\');
@@ -209,16 +209,16 @@ static int SftpAskResume(const char* targetName, unsigned __int64 have, unsigned
     base = (base != NULL) ? base + 1 : targetName;
     char msg[600];
     _snprintf_s(msg, _TRUNCATE,
-                "Soubor \"%s\" už částečně existuje (%I64u z %I64u bajtů).\n\n"
-                "Navázat v přerušeném přenosu?\n\n"
-                "Ano = navázat (pokračovat)\nNe = přenést celý znovu\nZrušit = přerušit operaci",
+                "File \"%s\" already partially exists (%I64u of %I64u bytes).\n\n"
+                "Resume interrupted transfer?\n\n"
+                "Yes = resume (continue)\nNo = transfer everything again\nCancel = cancel operation",
                 base, have, total);
     int r = SalamanderGeneral->SalMessageBox(g_OvrParent != NULL ? g_OvrParent : g_ProgMainWnd, msg,
-                                             "SFTP – navázat přenos", MB_YESNOCANCEL | MB_ICONQUESTION);
+                                             "SFTP - resume transfer", MB_YESNOCANCEL | MB_ICONQUESTION);
     return r == IDYES ? 1 : (r == IDNO ? 2 : -1);
 }
 
-// velikost lokálního souboru (0 pokud neexistuje)
+// local file size (0 if not found)
 static unsigned __int64 LocalFileSize(const char* path)
 {
     WIN32_FILE_ATTRIBUTE_DATA fad;
@@ -227,7 +227,7 @@ static unsigned __int64 LocalFileSize(const char* path)
     return ((unsigned __int64)fad.nFileSizeHigh << 32) | fad.nFileSizeLow;
 }
 
-// lokální čas modifikace jako unixový čas (0 pokud neexistuje)
+// local modification time as unix time (0 if not found)
 static unsigned __int64 LocalMTime(const char* path)
 {
     WIN32_FILE_ATTRIBUTE_DATA fad;
@@ -236,42 +236,42 @@ static unsigned __int64 LocalMTime(const char* path)
     ULARGE_INTEGER u;
     u.LowPart = fad.ftLastWriteTime.dwLowDateTime;
     u.HighPart = fad.ftLastWriteTime.dwHighDateTime;
-    // 100ns od 1601 -> sekundy od 1970
+// 100ns from 1601 -> seconds from 1970
     return (u.QuadPart - 116444736000000000ULL) / 10000000ULL;
 }
 
-// synchronizace: má se soubor přeskočit? (shodná velikost a lokální není starší)
+// synchronization: should file be skipped? (same size and local is not older)
 static bool SyncSkipDownload(const char* remote, const char* local)
 {
     if (GetFileAttributes(local) == INVALID_FILE_ATTRIBUTES)
-        return false; // lokálně chybí -> stáhnout
+        return false; // missing locally -> download
     unsigned __int64 lsize = LocalFileSize(local), rsize = 0;
     unsigned long perms, uid, gid, rmtime;
     if (!SftpConn.StatFull(remote, rsize, perms, uid, gid, rmtime))
         return false;
     if (lsize != rsize)
-        return false; // jiná velikost -> stáhnout
-    return LocalMTime(local) >= (unsigned __int64)rmtime; // shodná velikost a lokál není starší -> přeskočit
+        return false; // different size -> download
+    return LocalMTime(local) >= (unsigned __int64)rmtime; // same size and local is not older -> skip
 }
 
 static bool SyncSkipUpload(const char* local, const char* remote)
 {
     if (SftpConn.PathType(remote) != 1)
-        return false; // vzdáleně chybí -> nahrát
+        return false; // missing remotely -> upload
     unsigned __int64 lsize = LocalFileSize(local), rsize = 0;
     unsigned long perms, uid, gid, rmtime;
     if (!SftpConn.StatFull(remote, rsize, perms, uid, gid, rmtime))
         return false;
     if (lsize != rsize)
         return false;
-    return (unsigned __int64)rmtime >= LocalMTime(local); // shodná velikost a vzdálený není starší -> přeskočit
+    return (unsigned __int64)rmtime >= LocalMTime(local); // same size and remote is not older -> skip
 }
 
 static bool SftpProgressCallback(void* ctx, const char* name, unsigned __int64 done, unsigned __int64 total)
 {
     if (g_ProgDlg == NULL)
         return true;
-    // nový soubor -> reset měření rychlosti
+    // new file -> reset speed measurement
     if (strcmp(g_ProgFile, name) != 0)
     {
         lstrcpyn(g_ProgFile, name, MAX_PATH);
@@ -310,7 +310,7 @@ static void SftpProgressBegin(HWND parent)
     if (g_ProgDlg != NULL && g_ProgDlg->Create() != NULL)
     {
         SetForegroundWindow(g_ProgDlg->HWindow);
-        g_ProgDlg->Set("Připojuji…", 0, FALSE);
+        g_ProgDlg->Set("Connecting...", 0, FALSE);
         g_OvrParent = g_ProgDlg->HWindow;
         CSftpConnection::SetProgressCallback(SftpProgressCallback, NULL);
     }
@@ -372,7 +372,7 @@ CPluginFSInterface::GetRootPath(char* userPart)
     return TRUE;
 }
 
-// "//user@host[:port]" pro aktuální profil (předpona zobrazované cesty)
+// "//user@host[:port]" for current profile (path prefix displayed)
 static void SftpHostPrefix(char* out, int outSize)
 {
     char portpart[16] = "";
@@ -384,7 +384,7 @@ static void SftpHostPrefix(char* out, int outSize)
         _snprintf_s(out, outSize, _TRUNCATE, "//%s%s", SftpProfile.Host, portpart);
 }
 
-// z "//user@host/cesta" vrátí ukazatel na začátek vzdálené cesty (za hostitelem); jinak vrátí vstup
+// from "//user@host/path" returns pointer to start of remote path (after host); otherwise returns input
 static const char* SftpStripHost(const char* userPart)
 {
     if (userPart != NULL && (userPart[0] == '/' || userPart[0] == '\\') &&
@@ -398,8 +398,8 @@ static const char* SftpStripHost(const char* userPart)
     return userPart;
 }
 
-// pokud "//user@host[:port]/..." obsahuje jiného hostitele než aktuální profil, aktualizuj profil
-// a vynuť nové připojení (umožní zadat sftp://user@host/ přímo do adresního řádku)
+// if "//user@host[:port]/..." contains a different host than current profile, update profile
+// and force new connection (allows entering sftp://user@host/ directly in address bar)
 static void SftpParseHostInto(const char* userPart)
 {
     if (userPart == NULL || (userPart[0] != '/' && userPart[0] != '\\') ||
@@ -441,7 +441,7 @@ static void SftpParseHostInto(const char* userPart)
             lstrcpyn(SftpProfile.User, user, sizeof(SftpProfile.User));
         SftpProfile.Port = (port > 0) ? port : 22;
         SftpProfile.Valid = true;
-        SftpConn.Disconnect(); // jiný server → nové připojení
+        SftpConn.Disconnect(); // different server -> new connection
     }
 }
 
@@ -470,7 +470,7 @@ CPluginFSInterface::GetFullName(CFileData& file, int isDir, char* buf, int bufSi
 BOOL WINAPI
 CPluginFSInterface::GetFullFSPath(HWND parent, const char* fsName, char* path, int pathSize, BOOL& success)
 {
-    // 'path' je relativní nebo absolutní user-part; spoj s aktuální cestou a předřaď "fsName://host"
+    // 'path' is relative or absolute user-part; join with current path and prepend "fsName://host"
     const char* up = SftpStripHost(path);
     char full[MAX_PATH];
     if (up[0] == '/')
@@ -484,7 +484,7 @@ CPluginFSInterface::GetFullFSPath(HWND parent, const char* fsName, char* path, i
     if (success)
         sprintf(path, "%s:%s%s", fsName, prefix, full);
     else
-        SalamanderGeneral->SalMessageBox(parent, "Cesta je příliš dlouhá.", LoadStr(IDS_PLUGINNAME),
+        SalamanderGeneral->SalMessageBox(parent, "Path is too long.", LoadStr(IDS_PLUGINNAME),
                                          MB_OK | MB_ICONEXCLAMATION);
     return TRUE;
 }
@@ -499,8 +499,8 @@ BOOL WINAPI
 CPluginFSInterface::IsOurPath(int currentFSNameIndex, int fsNameIndex, const char* userPart)
 {
     if (ConnectData.UseConnectData)
-        return FALSE; // nové připojení z Connect dialogu
-    // jedno připojení obsluhuje celý strom serveru
+        return FALSE; // new connection from Connect dialog
+    // one connection serves the entire server tree
     return TRUE;
 }
 
@@ -523,14 +523,14 @@ CPluginFSInterface::ChangePath(int currentFSNameIndex, char* fsName, int fsNameI
 
     HWND parent = SalamanderGeneral->GetMsgBoxParent();
 
-    // z adresního řádku "sftp://user@host/" případně přepni na jiný server
+    // from address bar "sftp://user@host/" optionally switch to different server
     if (!ConnectData.UseConnectData)
         SftpParseHostInto(userPart);
 
     if (!SftpEnsureConnected(parent))
         return FALSE;
 
-    // urči vstupní cestu (bez předpony //host)
+    // determine input path (without //host prefix)
     char path[MAX_PATH];
     if (*userPart == 0 && ConnectData.UseConnectData) // data z Connect dialogu
         lstrcpyn(path, ConnectData.UserPart, MAX_PATH);
@@ -538,7 +538,7 @@ CPluginFSInterface::ChangePath(int currentFSNameIndex, char* fsName, int fsNameI
         lstrcpyn(path, SftpStripHost(userPart), MAX_PATH);
     if (path[0] == 0)
         strcpy(path, "/");
-    // relativní cestu naváž na aktuální
+    // join relative path to current
     if (path[0] != '/')
     {
         char joined[MAX_PATH];
@@ -550,18 +550,18 @@ CPluginFSInterface::ChangePath(int currentFSNameIndex, char* fsName, int fsNameI
     BOOL fileNameAlreadyCut = FALSE;
     while (1)
     {
-        int type = SftpConn.PathType(path); // 0=neexist,1=soubor,2=adresář
+        int type = SftpConn.PathType(path); // 0=not found,1=file,2=directory
         if (type == 2)
         {
             lstrcpyn(Path, path, MAX_PATH);
             return TRUE;
         }
-        // soubor nebo neexistuje -> zkrať poslední komponentu
+        // file or not found -> trim last component
         const char* slash = strrchr(path, '/');
-        if (slash == NULL || slash == path) // už jsme na rootu a ten není adresář -> fatální
+        if (slash == NULL || slash == path) // already at root and it's not a directory -> fatal
         {
             char msg[2 * MAX_PATH];
-            _snprintf_s(msg, _TRUNCATE, "Cesta neexistuje nebo není adresář:\n%s:%s", fsName, userPart);
+            _snprintf_s(msg, _TRUNCATE, "Path does not exist or is not a directory:\n%s:%s", fsName, userPart);
             SalamanderGeneral->SalMessageBox(parent, msg, LoadStr(IDS_PLUGINNAME), MB_OK | MB_ICONEXCLAMATION);
             return FALSE;
         }
@@ -572,7 +572,7 @@ CPluginFSInterface::ChangePath(int currentFSNameIndex, char* fsName, int fsNameI
 
         if (pathWasCut != NULL)
             *pathWasCut = TRUE;
-        if (!fileNameAlreadyCut) // jen první odříznutí může být jméno souboru k zaostření
+        if (!fileNameAlreadyCut) // only first trim can be file name to focus
         {
             fileNameAlreadyCut = TRUE;
             if (cutFileName != NULL && type == 1)
@@ -600,7 +600,7 @@ CPluginFSInterface::ListCurrentPath(CSalamanderDirectoryAbstract* dir,
     std::vector<CSftpEntry> entries;
     if (!SftpConn.ListDir(Path[0] != 0 ? Path : "/", entries))
     {
-        PathError = TRUE; // chyba výpisu -> ChangePath cestu zkrátí
+        PathError = TRUE; // list error -> ChangePath will shorten path
         return FALSE;
     }
 
@@ -611,7 +611,7 @@ CPluginFSInterface::ListCurrentPath(CSalamanderDirectoryAbstract* dir,
         FatalError = TRUE;
         return FALSE;
     }
-    iconsType = pitFromRegistry; // ikony podle přípony z registru (.pdf, .txt, …)
+    iconsType = pitFromRegistry; // icons by extension from registry (.pdf, .txt, ...)
 
     dir->SetValidData(VALID_DATA_EXTENSION | VALID_DATA_SIZE | VALID_DATA_TYPE |
                       VALID_DATA_DATE | VALID_DATA_TIME | VALID_DATA_ATTRIBUTES |
@@ -621,7 +621,7 @@ CPluginFSInterface::ListCurrentPath(CSalamanderDirectoryAbstract* dir,
     SalamanderGeneral->GetConfigParameter(SALCFG_SORTBYEXTDIRSASFILES, &sortByExtDirsAsFiles,
                                           sizeof(sortByExtDirsAsFiles), NULL);
 
-    // up-dir ".." (pokud nejsme v kořeni)
+    // up-dir ".." (if not at root)
     if (!SftpIsRoot(Path))
     {
         CFileData up;
@@ -660,7 +660,7 @@ CPluginFSInterface::ListCurrentPath(CSalamanderDirectoryAbstract* dir,
         }
         file.NameLen = e.Name.length();
         if (!sortByExtDirsAsFiles && e.IsDir)
-            file.Ext = file.Name + file.NameLen; // adresáře nemají příponu
+            file.Ext = file.Name + file.NameLen; // directories have no extension
         else
         {
             char* s = strrchr(file.Name, '.');
@@ -672,12 +672,12 @@ CPluginFSInterface::ListCurrentPath(CSalamanderDirectoryAbstract* dir,
         file.LastWrite.dwLowDateTime = (DWORD)ll;
         file.LastWrite.dwHighDateTime = (DWORD)(ll >> 32);
         file.DosName = NULL;
-        file.Hidden = (!e.Name.empty() && e.Name[0] == '.') ? 1 : 0; // unixové skryté
+        file.Hidden = (!e.Name.empty() && e.Name[0] == '.') ? 1 : 0; // unix hidden
         file.IsLink = e.IsLink ? 1 : 0;
         file.IsOffline = 0;
         file.IconOverlayIndex = ICONOVERLAYINDEX_NOTUSED;
 
-        // sestavení řetězce práv (rwxr-xr-x)
+        // build permissions string (rwxr-xr-x)
         char rights[12];
         const char* pp = "rwxrwxrwx";
         rights[0] = e.IsLink ? 'l' : (e.IsDir ? 'd' : '-');
@@ -720,7 +720,7 @@ CPluginFSInterface::TryCloseOrDetach(BOOL forceClose, BOOL canDetach, BOOL& deta
         detach = FALSE; // we want to close the FS in any case
         return TRUE;
     }
-    // bez ptaní: SFTP spojení při opuštění cesty prostě zavři (nedetachuj)
+    // without asking: just close SFTP connection when leaving path (don't detach)
     detach = FALSE;
     return TRUE;
 }
@@ -837,14 +837,14 @@ CPluginFSInterface::ShowSecurityInfo(HWND parent)
 {
     if (!SftpConn.IsConnected())
     {
-        SalamanderGeneral->SalMessageBox(parent, "Není aktivní SFTP spojení.", LoadStr(IDS_PLUGINNAME),
+        SalamanderGeneral->SalMessageBox(parent, "No active SFTP connection.", LoadStr(IDS_PLUGINNAME),
                                          MB_OK | MB_ICONINFORMATION);
         return;
     }
     std::string info;
     SftpConn.GetSecurityInfo(info);
-    SalamanderGeneral->SalMessageBox(parent, info.empty() ? "(bez informací)" : info.c_str(),
-                                     "Bezpečnostní informace SFTP", MB_OK | MB_ICONINFORMATION);
+    SalamanderGeneral->SalMessageBox(parent, info.empty() ? "(no information)" : info.c_str(),
+                                     "SFTP Security Information", MB_OK | MB_ICONINFORMATION);
 }
 
 BOOL WINAPI
@@ -982,7 +982,7 @@ CPluginFSInterface::ShowInfoDialog(const char* fsName, HWND parent)
         strcpy(num, "(unknown)");
 
     char buf[1000];
-    _snprintf_s(buf, _TRUNCATE, "SFTP připojení\n\nCesta: %s:%s", fsName, Path);
+    _snprintf_s(buf, _TRUNCATE, "SFTP connection\n\nPath: %s:%s", fsName, Path);
     SalamanderGeneral->SalMessageBox(parent, buf, LoadStr(IDS_PLUGINNAME), MB_OK | MB_ICONINFORMATION);
 }
 
@@ -993,23 +993,23 @@ CPluginFSInterface::ExecuteCommandLine(HWND parent, char* command, int& selFrom,
         return FALSE;
     if (!SftpEnsureConnected(parent))
         return TRUE;
-    // spusť příkaz v aktuálním adresáři serveru
+    // execute command in current server directory
     char full[2 * MAX_PATH];
     _snprintf_s(full, _TRUNCATE, "cd \"%s\" && %s", Path[0] != 0 ? Path : "/", command);
     std::string output;
     if (!SftpConn.ExecCommand(full, output))
     {
         char eb[600];
-        _snprintf_s(eb, _TRUNCATE, "Příkaz selhal:\n%s", SftpConn.LastError());
+        _snprintf_s(eb, _TRUNCATE, "Command failed:\n%s", SftpConn.LastError());
         SalamanderGeneral->SalMessageBox(parent, eb, LoadStr(IDS_PLUGINNAME), MB_OK | MB_ICONEXCLAMATION);
     }
     else
     {
         if (output.length() > 8000)
-            output.resize(8000); // ořízni dlouhý výstup pro messagebox
-        SalamanderGeneral->SalMessageBox(parent, output.empty() ? "(příkaz bez výstupu)" : output.c_str(),
-                                         "Výstup příkazu", MB_OK | MB_ICONINFORMATION);
-        SalamanderGeneral->PostRefreshPanelFS(this); // příkaz mohl změnit obsah
+            output.resize(8000); // truncate long output for messagebox
+        SalamanderGeneral->SalMessageBox(parent, output.empty() ? "(command with no output)" : output.c_str(),
+                                         "Command output", MB_OK | MB_ICONINFORMATION);
+        SalamanderGeneral->PostRefreshPanelFS(this); // command may have changed content
     }
     command[0] = 0; // vyčisti command line
     return TRUE;
@@ -1023,17 +1023,17 @@ CPluginFSInterface::QuickRename(const char* fsName, int mode, HWND parent, CFile
     // ('format' according to SalamanderGeneral->GetConfigParameter(SALCFG_FILENAMEFORMAT))
     cancel = FALSE;
     if (mode == 1)
-        return FALSE; // vyžádej standardní dialog
+        return FALSE; // request standard dialog
 
     char buf[2 * MAX_PATH];
-    // syntaktická kontrola jména (bez lomítek)
+    // syntax check of name (no backslashes)
     if (newName[0] == 0 || strchr(newName, '/') != NULL || strchr(newName, '\\') != NULL)
     {
-        SalamanderGeneral->SalMessageBox(parent, "Neplatné jméno.", LoadStr(IDS_PLUGINNAME), MB_OK | MB_ICONEXCLAMATION);
+        SalamanderGeneral->SalMessageBox(parent, "Invalid name.", LoadStr(IDS_PLUGINNAME), MB_OK | MB_ICONEXCLAMATION);
         return FALSE;
     }
 
-    // aplikuj masku
+    // apply mask
     SalamanderGeneral->MaskName(buf, 2 * MAX_PATH, file.Name, newName);
     lstrcpyn(newName, buf, MAX_PATH);
 
@@ -1045,7 +1045,7 @@ CPluginFSInterface::QuickRename(const char* fsName, int mode, HWND parent, CFile
         return FALSE;
     if (!SftpConn.Rename(remoteFrom, remoteTo))
     {
-        _snprintf_s(buf, _TRUNCATE, "Přejmenování selhalo:\n%s", SftpConn.LastError());
+        _snprintf_s(buf, _TRUNCATE, "Rename failed:\n%s", SftpConn.LastError());
         SalamanderGeneral->SalMessageBox(parent, buf, LoadStr(IDS_PLUGINNAME), MB_OK | MB_ICONEXCLAMATION);
         return FALSE;
     }
@@ -1058,17 +1058,17 @@ CPluginFSInterface::AcceptChangeOnPathNotification(const char* fsName, const cha
 {
     if (Path[0] == 0)
         return;
-    // 'path' může být buď user-part ("/dir") nebo plná FS cesta ("fsName:/dir") -> odřízni prefix
+    // 'path' can be either user-part ("/dir") or full FS path ("fsName:/dir") -> trim prefix
     const char* userPart = path;
     int fsNameLen = (int)strlen(fsName);
     if (SalamanderGeneral->StrNICmp(path, fsName, fsNameLen) == 0 && path[fsNameLen] == ':')
-        userPart = path + fsNameLen + 1; // naše FS cesta
+        userPart = path + fsNameLen + 1; // our FS path
     else if (path[0] != '/')
-        return; // disková nebo cizí cesta -> nás se netýká
+        return; // disk or foreign path -> not relevant to us
 
-    userPart = SftpStripHost(userPart); // odřízni případnou předponu //host
+    userPart = SftpStripHost(userPart); // trim optional //host prefix
 
-    // refresh panelu, když se změna týká naší aktuální cesty (nebo jejího podstromu)
+    // refresh panel when change affects our current path (or its subtree)
     if (SftpIsSamePath(userPart, Path) ||
         (includingSubdirs && strncmp(Path, userPart, strlen(userPart)) == 0))
         SalamanderGeneral->PostRefreshPanelFS(this);
@@ -1079,7 +1079,7 @@ CPluginFSInterface::CreateDir(const char* fsName, int mode, HWND parent, char* n
 {
     cancel = FALSE;
     if (mode == 1)
-        return FALSE; // vyžádej standardní dialog
+        return FALSE; // request standard dialog
 
     if (newName[0] == 0)
     {
@@ -1099,12 +1099,12 @@ CPluginFSInterface::CreateDir(const char* fsName, int mode, HWND parent, char* n
     if (!SftpConn.MakeDir(remote))
     {
         char eb[600];
-        _snprintf_s(eb, _TRUNCATE, "Nelze vytvořit adresář:\n%s", SftpConn.LastError());
+        _snprintf_s(eb, _TRUNCATE, "Cannot create directory:\n%s", SftpConn.LastError());
         SalamanderGeneral->SalMessageBox(parent, eb, LoadStr(IDS_PLUGINNAME), MB_OK | MB_ICONEXCLAMATION);
         return FALSE;
     }
     SalamanderGeneral->PostChangeOnPathNotification(Path, FALSE);
-    // zaostři nově vytvořený adresář (jen jeho jméno)
+    // focus newly created directory (just its name)
     const char* slash = strrchr(remote, '/');
     lstrcpyn(newName, slash != NULL ? slash + 1 : remote, MAX_PATH);
     return TRUE;
@@ -1131,7 +1131,7 @@ CPluginFSInterface::ViewFile(const char* fsName, HWND parent,
     if (tmpFileName == NULL)
         return; // fatal error
 
-    // je-li potřeba, stáhni soubor do disk cache přes SFTP
+    // if needed, download file to disk cache via SFTP
     BOOL newFileOK = FALSE;
     CQuadWord newFileSize(0, 0);
     if (!fileExists)
@@ -1153,7 +1153,7 @@ CPluginFSInterface::ViewFile(const char* fsName, HWND parent,
         else
         {
             char errorText[3 * MAX_PATH + 100];
-            _snprintf_s(errorText, _TRUNCATE, "Nelze stáhnout soubor %s.\n%s", file.Name, SftpConn.LastError());
+            _snprintf_s(errorText, _TRUNCATE, "Cannot download file %s.\n%s", file.Name, SftpConn.LastError());
             SalamanderGeneral->SalMessageBox(parent, errorText, LoadStr(IDS_PLUGINNAME), MB_OK | MB_ICONEXCLAMATION);
         }
     }
@@ -1174,7 +1174,7 @@ CPluginFSInterface::ViewFile(const char* fsName, HWND parent,
                                     newFileSize, fileLock, fileLockOwner, FALSE /* do not delete immediately after closing the viewer */);
 }
 
-// rekurzivní smazání souboru/adresáře na SFTP
+// recursive deletion of file/directory on SFTP
 static bool SftpDeleteRecursive(const char* remote, bool isDir)
 {
     if (!isDir)
@@ -1193,35 +1193,35 @@ static bool SftpDeleteRecursive(const char* remote, bool isDir)
     return SftpConn.RemoveDir(remote);
 }
 
-// rekurzivní stažení souboru/adresáře z SFTP na disk
+// recursive download of file/directory from SFTP to disk
 static bool SftpDownloadRecursive(const char* remote, const char* local, bool isDir)
 {
     if (!isDir)
     {
-        if (g_SyncMode) // synchronizace: bez ptaní, jen chybějící/změněné
+        if (g_SyncMode) // synchronization: without asking, only missing/changed
         {
             if (SyncSkipDownload(remote, local))
                 return true;
             return SftpConn.Download(remote, local);
         }
-        if (GetFileAttributes(local) != INVALID_FILE_ATTRIBUTES) // lokální soubor už existuje
+        if (GetFileAttributes(local) != INVALID_FILE_ATTRIBUTES) // local file already exists
         {
             unsigned __int64 localSize = LocalFileSize(local);
             unsigned __int64 remoteSize = 0;
-            // nabídni navázání, když je lokální menší než vzdálený (jen SFTP)
+            // offer resume when local is smaller than remote (SFTP only)
             if (!SftpConn.IsScpMode() && localSize > 0 &&
                 SftpConn.RemoteFileSize(remote, remoteSize) && remoteSize > localSize)
             {
                 int r = SftpAskResume(local, localSize, remoteSize);
                 if (r == -1) { g_OvrCancel = true; return false; }
-                if (r == 1) return SftpConn.Download(remote, local, localSize); // navázat
-                // r == 2 → přepsat (pokračuj plným stažením)
+                if (r == 1) return SftpConn.Download(remote, local, localSize); // resume
+                // r == 2 -> overwrite (continue with full download)
             }
             else
             {
                 int a = SftpAskOverwrite(local);
                 if (a == 0)
-                    return true; // přeskočit (= úspěch)
+                    return true; // skip (= success)
                 if (a < 0)
                 {
                     g_OvrCancel = true;
@@ -1247,35 +1247,35 @@ static bool SftpDownloadRecursive(const char* remote, const char* local, bool is
     return true;
 }
 
-// rekurzivní nahrání souboru/adresáře z disku na SFTP
+// recursive upload of file/directory from disk to SFTP
 static bool SftpUploadRecursive(const char* local, const char* remote, bool isDir)
 {
     if (!isDir)
     {
-        if (g_SyncMode) // synchronizace: bez ptaní, jen chybějící/změněné
+        if (g_SyncMode) // synchronization: without asking, only missing/changed
         {
             if (SyncSkipUpload(local, remote))
                 return true;
             return SftpConn.Upload(local, remote);
         }
-        if (SftpConn.PathType(remote) == 1) // vzdálený soubor už existuje
+        if (SftpConn.PathType(remote) == 1) // remote file already exists
         {
             unsigned __int64 localSize = LocalFileSize(local);
             unsigned __int64 remoteSize = 0;
-            // nabídni navázání, když je vzdálený menší než lokální (jen SFTP)
+            // offer resume when remote is smaller than local (SFTP only)
             if (!SftpConn.IsScpMode() &&
                 SftpConn.RemoteFileSize(remote, remoteSize) && remoteSize > 0 && remoteSize < localSize)
             {
                 int r = SftpAskResume(remote, remoteSize, localSize);
                 if (r == -1) { g_OvrCancel = true; return false; }
-                if (r == 1) return SftpConn.Upload(local, remote, remoteSize); // navázat
-                // r == 2 → přepsat
+                if (r == 1) return SftpConn.Upload(local, remote, remoteSize); // resume
+                // r == 2 -> overwrite
             }
             else
             {
                 int a = SftpAskOverwrite(remote);
                 if (a == 0)
-                    return true; // přeskočit
+                    return true; // skip
                 if (a < 0)
                 {
                     g_OvrCancel = true;
@@ -1285,7 +1285,7 @@ static bool SftpUploadRecursive(const char* local, const char* remote, bool isDi
         }
         return SftpConn.Upload(local, remote);
     }
-    SftpConn.MakeDir(remote); // ignoruj chybu (může už existovat)
+    SftpConn.MakeDir(remote); // ignore error (may already exist)
     char mask[2 * MAX_PATH];
     lstrcpyn(mask, local, 2 * MAX_PATH);
     SalamanderGeneral->SalPathAppend(mask, "*", 2 * MAX_PATH);
@@ -1313,7 +1313,7 @@ static bool SftpUploadRecursive(const char* local, const char* remote, bool isDi
     return ok;
 }
 
-// rekurzivní smazání lokálního souboru/adresáře (pro operaci Move z disku)
+// recursive deletion of local file/directory (for Move operation from disk)
 static void LocalDeleteRecursive(const char* path, bool isDir)
 {
     if (!isDir)
@@ -1342,7 +1342,7 @@ static void LocalDeleteRecursive(const char* path, bool isDir)
     RemoveDirectory(path);
 }
 
-// rekurzivní součet velikosti vzdáleného adresáře
+// recursive sum of remote directory size
 static unsigned __int64 SftpDirSize(const char* remote, int& files, int& dirs)
 {
     unsigned __int64 total = 0;
@@ -1367,7 +1367,7 @@ static unsigned __int64 SftpDirSize(const char* remote, int& files, int& dirs)
     return total;
 }
 
-// Upravit soubor: stáhni do temp, otevři v editoru, po potvrzení nahraj zpět.
+// Edit file: download to temp, open in editor, after confirmation upload back.
 void SftpEditFile(HWND parent, const char* remoteDir, const char* fileName)
 {
     if (!SftpEnsureConnected(parent))
@@ -1384,14 +1384,14 @@ void SftpEditFile(HWND parent, const char* remoteDir, const char* fileName)
     if (!SftpConn.Download(remote, tmpFile))
     {
         char eb[600];
-        _snprintf_s(eb, _TRUNCATE, "Nelze stáhnout soubor:\n%s", SftpConn.LastError());
+        _snprintf_s(eb, _TRUNCATE, "Cannot download file:\n%s", SftpConn.LastError());
         SalamanderGeneral->SalMessageBox(parent, eb, LoadStr(IDS_PLUGINNAME), MB_OK | MB_ICONEXCLAMATION);
         return;
     }
     ShellExecute(parent, "open", tmpFile, NULL, tmpDir, SW_SHOWNORMAL);
     if (SalamanderGeneral->SalMessageBox(parent,
-                                         "Soubor byl otevřen v editoru.\n\nAž úpravy uložíte, klikněte na Ano pro nahrání zpět na server.\n(Ne = změny zahodit)",
-                                         "Upravit soubor", MB_YESNO | MB_ICONQUESTION) == IDYES)
+                                         "File has been opened in editor.\n\nWhen you save your changes, click Yes to upload back to server.\n(No = discard changes)",
+                                         "Edit file", MB_YESNO | MB_ICONQUESTION) == IDYES)
     {
         if (SftpConn.Upload(tmpFile, remote))
         {
@@ -1402,14 +1402,14 @@ void SftpEditFile(HWND parent, const char* remoteDir, const char* fileName)
         else
         {
             char eb[600];
-            _snprintf_s(eb, _TRUNCATE, "Nahrání selhalo:\n%s", SftpConn.LastError());
+            _snprintf_s(eb, _TRUNCATE, "Upload failed:\n%s", SftpConn.LastError());
             SalamanderGeneral->SalMessageBox(parent, eb, LoadStr(IDS_PLUGINNAME), MB_OK | MB_ICONEXCLAMATION);
         }
     }
     DeleteFile(tmpFile);
 }
 
-// Spočítat velikost vybraných položek na serveru.
+// Calculate size of selected items on server.
 void SftpCalcSize(HWND parent, const char* remoteDir, int panel)
 {
     if (!SftpEnsureConnected(parent))
@@ -1417,7 +1417,7 @@ void SftpCalcSize(HWND parent, const char* remoteDir, int panel)
     int index = 0;
     BOOL isDir = FALSE;
     const CFileData* f;
-    BOOL focused = (SalamanderGeneral->GetPanelSelectedItem(panel, &index, &isDir) == NULL); // nic vybráno -> zaostřená položka
+    BOOL focused = (SalamanderGeneral->GetPanelSelectedItem(panel, &index, &isDir) == NULL); // nothing selected -> focused item
     index = 0;
     unsigned __int64 total = 0;
     int files = 0, dirs = 0;
@@ -1446,13 +1446,13 @@ void SftpCalcSize(HWND parent, const char* remoteDir, int panel)
     SetCursor(oldCur);
     char info[400];
     _snprintf_s(info, _TRUNCATE,
-                "Velikost: %I64u bajtů (%.2f MB)\nSouborů: %d\nAdresářů: %d",
+                "Size: %I64u bytes (%.2f MB)\nFiles: %d\nDirectories: %d",
                 total, total / 1048576.0, files, dirs);
-    SalamanderGeneral->SalMessageBox(parent, info, "Velikost na serveru", MB_OK | MB_ICONINFORMATION);
+    SalamanderGeneral->SalMessageBox(parent, info, "Size on server", MB_OK | MB_ICONINFORMATION);
 }
 
-// synchronizace adresáře: direction 0 = stáhnout (server->PC), 1 = nahrát (PC->server).
-// Přenese jen chybějící a změněné soubory (porovnání velikost + čas).
+// directory synchronization: direction 0 = download (server->PC), 1 = upload (PC->server).
+// Only transfers missing and changed files (size + time comparison).
 void SftpSyncDir(HWND parent, const char* remoteDir, const char* localDir, int direction)
 {
     if (!SftpEnsureConnected(parent))
@@ -1467,15 +1467,15 @@ void SftpSyncDir(HWND parent, const char* remoteDir, const char* localDir, int d
     g_SyncMode = 0;
     SftpProgressEnd();
     if (direction == 1)
-        SalamanderGeneral->PostChangeOnPathNotification(remoteDir, TRUE); // refresh vzdáleného panelu
+        SalamanderGeneral->PostChangeOnPathNotification(remoteDir, TRUE); // refresh remote panel
     if (!ok && !g_OvrCancel)
     {
         char eb[600];
-        _snprintf_s(eb, _TRUNCATE, "Synchronizace selhala:\n%s", SftpConn.LastError());
+        _snprintf_s(eb, _TRUNCATE, "Synchronization failed:\n%s", SftpConn.LastError());
         SalamanderGeneral->SalMessageBox(parent, eb, LoadStr(IDS_PLUGINNAME), MB_OK | MB_ICONEXCLAMATION);
     }
     else if (!g_OvrCancel)
-        SalamanderGeneral->SalMessageBox(parent, "Synchronizace dokončena.", LoadStr(IDS_PLUGINNAME),
+        SalamanderGeneral->SalMessageBox(parent, "Synchronization completed.", LoadStr(IDS_PLUGINNAME),
                                          MB_OK | MB_ICONINFORMATION);
 }
 
@@ -1485,7 +1485,7 @@ CPluginFSInterface::Delete(const char* fsName, int mode, HWND parent, int panel,
 {
     cancelOrError = FALSE;
     if (mode == 1)
-        return FALSE; // vyžádej standardní potvrzení smazání
+        return FALSE; // request standard delete confirmation
 
     if (!SftpEnsureConnected(parent))
     {
@@ -1512,7 +1512,7 @@ CPluginFSInterface::Delete(const char* fsName, int mode, HWND parent, int panel,
         if (!SftpDeleteRecursive(remote, isDir != 0))
         {
             char eb[700];
-            _snprintf_s(eb, _TRUNCATE, "Nelze smazat \"%s\":\n%s\n\nPokračovat dalšími položkami?",
+            _snprintf_s(eb, _TRUNCATE, "Cannot delete \"%s\":\n%s\n\nContinue with other items?",
                         f->Name, SftpConn.LastError());
             if (SalamanderGeneral->SalMessageBox(parent, eb, LoadStr(IDS_PLUGINNAME),
                                                  MB_YESNO | MB_ICONEXCLAMATION) == IDNO)
@@ -1776,12 +1776,12 @@ CPluginFSInterface::CopyOrMoveFromFS(BOOL copy, int mode, const char* fsName, HW
     operationMask = FALSE;
     cancelOrHandlePath = FALSE;
 
-    if (mode == 1) // první volání: nech Salamander nabídnout cíl a zobrazit standardní dialog
+    if (mode == 1) // first call: let Salamander offer target and show standard dialog
         return FALSE;
-    if (mode == 4) // chyba zpracování cesty -> nech uživatele opravit
+    if (mode == 4) // path processing error -> let user fix it
         return FALSE;
 
-    // ořízni masku (*.* apod.) z cílové cesty, ponech adresář
+    // trim mask (*.* etc.) from target path, keep directory
     char target[2 * MAX_PATH];
     lstrcpyn(target, targetPath, 2 * MAX_PATH);
     {
@@ -1796,7 +1796,7 @@ CPluginFSInterface::CopyOrMoveFromFS(BOOL copy, int mode, const char* fsName, HW
         }
     }
 
-    // cíl musí být cesta na disku (X:\... nebo \\server\...)
+    // target must be a disk path (X:\... or \\server\...)
     BOOL diskPath = (target[0] != 0 && target[1] == ':') ||
                     (target[0] == '\\' && target[1] == '\\');
 
@@ -1808,7 +1808,7 @@ CPluginFSInterface::CopyOrMoveFromFS(BOOL copy, int mode, const char* fsName, HW
 
     if (!diskPath)
     {
-        // cíl je na SFTP (sftp://host/...) -> kopie v rámci serveru přes dočasný soubor
+        // target is on SFTP (sftp://host/...) -> copy within server via temp file
         char* up = strchr(target, ':');
         char remoteTargetDir[MAX_PATH];
         lstrcpyn(remoteTargetDir, SftpStripHost((up != NULL) ? up + 1 : target), MAX_PATH);
@@ -1839,7 +1839,7 @@ CPluginFSInterface::CopyOrMoveFromFS(BOOL copy, int mode, const char* fsName, HW
             SalamanderGeneral->SalPathAppend(tmpItem, ff->Name, 2 * MAX_PATH);
             BOOL step = SftpDownloadRecursive(src, tmpItem, isDirF != 0) &&
                         SftpUploadRecursive(tmpItem, dst, isDirF != 0);
-            LocalDeleteRecursive(tmpItem, isDirF != 0); // úklid temp
+            LocalDeleteRecursive(tmpItem, isDirF != 0); // cleanup temp
             if (!step)
             {
                 if (g_OvrCancel)
@@ -1848,7 +1848,7 @@ CPluginFSInterface::CopyOrMoveFromFS(BOOL copy, int mode, const char* fsName, HW
                     break;
                 }
                 char eb[700];
-                _snprintf_s(eb, _TRUNCATE, "Chyba při kopírování \"%s\":\n%s\n\nPokračovat?", ff->Name, SftpConn.LastError());
+                _snprintf_s(eb, _TRUNCATE, "Error copying \"%s\":\n%s\n\nContinue?", ff->Name, SftpConn.LastError());
                 if (SalamanderGeneral->SalMessageBox(parent, eb, LoadStr(IDS_PLUGINNAME), MB_YESNO | MB_ICONEXCLAMATION) == IDNO)
                 {
                     okF = FALSE;
@@ -1856,7 +1856,7 @@ CPluginFSInterface::CopyOrMoveFromFS(BOOL copy, int mode, const char* fsName, HW
                 }
             }
             else if (!copy)
-                SftpDeleteRecursive(src, isDirF != 0); // Move -> smaž zdroj
+                SftpDeleteRecursive(src, isDirF != 0); // Move -> delete source
             if (focusedF)
                 break;
         }
@@ -1897,7 +1897,7 @@ CPluginFSInterface::CopyOrMoveFromFS(BOOL copy, int mode, const char* fsName, HW
                 break;
             }
             char eb[700];
-            _snprintf_s(eb, _TRUNCATE, "Chyba při stahování \"%s\":\n%s\n\nPokračovat dalšími položkami?",
+            _snprintf_s(eb, _TRUNCATE, "Error downloading \"%s\":\n%s\n\nContinue with other items?",
                         f->Name, SftpConn.LastError());
             if (SalamanderGeneral->SalMessageBox(parent, eb, LoadStr(IDS_PLUGINNAME),
                                                  MB_YESNO | MB_ICONEXCLAMATION) == IDNO)
@@ -1911,7 +1911,7 @@ CPluginFSInterface::CopyOrMoveFromFS(BOOL copy, int mode, const char* fsName, HW
     }
     SftpProgressEnd();
 
-    // přesun (Move): po úspěšném zkopírování smaž zdroj na SFTP
+    // move (Move): after successful copy, delete source on SFTP
     if (success && !copy)
     {
         focused = (selectedFiles == 0 && selectedDirs == 0);
@@ -1949,12 +1949,12 @@ CPluginFSInterface::CopyOrMoveFromDiskToFS(BOOL copy, int mode, const char* fsNa
 
     if (mode == 1)
     {
-        // přidej masku *.* k cílové cestě (Salamander zobrazí standardní dialog)
+        // add mask *.* to target path (Salamander will show standard dialog)
         SalamanderGeneral->SalPathAppend(targetPath, "*.*", 2 * MAX_PATH);
         return TRUE;
     }
 
-    // získej user-part cílové cesty (za "fsName://host") a ořízni masku -> vzdálený adresář
+    // get user-part of target path (after "fsName://host") and trim mask -> remote directory
     char remoteDir[MAX_PATH];
     char* up = strchr(targetPath, ':');
     lstrcpyn(remoteDir, SftpStripHost((up != NULL) ? up + 1 : targetPath), MAX_PATH);
@@ -1991,11 +1991,11 @@ CPluginFSInterface::CopyOrMoveFromDiskToFS(BOOL copy, int mode, const char* fsNa
     SftpProgressBegin(parent);
     while ((name = next(NULL, 0, &dosName, &isDir, &size, &attr, &lastWrite, nextParam, NULL)) != NULL)
     {
-        // 'name' je relativní jméno; plná lokální cesta = sourcePath + name
+        // 'name' is relative name; full local path = sourcePath + name
         char local[2 * MAX_PATH];
         lstrcpyn(local, sourcePath, 2 * MAX_PATH);
         SalamanderGeneral->SalPathAppend(local, name, 2 * MAX_PATH);
-        // jméno bez cesty pro vzdálený cíl
+        // name without path for remote target
         const char* base = strrchr(name, '\\');
         base = (base != NULL) ? base + 1 : name;
         char remote[MAX_PATH];
@@ -2008,7 +2008,7 @@ CPluginFSInterface::CopyOrMoveFromDiskToFS(BOOL copy, int mode, const char* fsNa
                 break;
             }
             char eb[700];
-            _snprintf_s(eb, _TRUNCATE, "Chyba při nahrávání \"%s\":\n%s\n\nPokračovat dalšími položkami?",
+            _snprintf_s(eb, _TRUNCATE, "Error uploading \"%s\":\n%s\n\nContinue with other items?",
                         base, SftpConn.LastError());
             if (SalamanderGeneral->SalMessageBox(parent, eb, LoadStr(IDS_PLUGINNAME),
                                                  MB_YESNO | MB_ICONEXCLAMATION) == IDNO)
@@ -2018,13 +2018,13 @@ CPluginFSInterface::CopyOrMoveFromDiskToFS(BOOL copy, int mode, const char* fsNa
             }
             continue;
         }
-        // přesun (Move): po úspěšném nahrání smaž lokální zdroj
+        // move (Move): after successful upload, delete local source
         if (!copy)
             LocalDeleteRecursive(local, isDir != 0);
     }
     SftpProgressEnd();
 
-    // obnov panel s naší FS cestou (pokud je zobrazena)
+    // refresh panel with our FS path (if displayed)
     char fsfull[MAX_PATH + 32];
     _snprintf_s(fsfull, _TRUNCATE, "%s:%s", fsName, remoteDir);
     SalamanderGeneral->PostChangeOnPathNotification(fsfull, FALSE);
@@ -2034,7 +2034,7 @@ CPluginFSInterface::CopyOrMoveFromDiskToFS(BOOL copy, int mode, const char* fsNa
     return success;
 }
 
-// dialog pro zadání oktalových práv (chmod)
+// dialog for entering octal permissions (chmod)
 static int g_ChmodOctal = 0644;
 static INT_PTR CALLBACK ChmodDlgProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 {
@@ -2076,7 +2076,7 @@ CPluginFSInterface::ChangeAttributes(const char* fsName, HWND parent, int panel,
     if (!SftpEnsureConnected(parent))
         return FALSE;
 
-    // předvyplň právy prvního vybraného/zaostřeného prvku
+    // pre-fill permissions of first selected/focused item
     BOOL focused = (selectedFiles == 0 && selectedDirs == 0);
     int index = 0;
     BOOL isDir = FALSE;
@@ -2095,7 +2095,7 @@ CPluginFSInterface::ChangeAttributes(const char* fsName, HWND parent, int panel,
         return FALSE;
     unsigned long mode = (unsigned long)(g_ChmodOctal & 0777);
 
-    // aplikuj na všechny vybrané (nebo zaostřený)
+    // apply to all selected (or focused)
     focused = (selectedFiles == 0 && selectedDirs == 0);
     index = 0;
     BOOL success = TRUE;
@@ -2110,7 +2110,7 @@ CPluginFSInterface::ChangeAttributes(const char* fsName, HWND parent, int panel,
         if (!SftpConn.Chmod(remote, mode))
         {
             char eb[700];
-            _snprintf_s(eb, _TRUNCATE, "Nelze změnit práva \"%s\":\n%s\n\nPokračovat?",
+            _snprintf_s(eb, _TRUNCATE, "Cannot change permissions \"%s\":\n%s\n\nContinue?",
                         f->Name, SftpConn.LastError());
             if (SalamanderGeneral->SalMessageBox(parent, eb, LoadStr(IDS_PLUGINNAME),
                                                  MB_YESNO | MB_ICONEXCLAMATION) == IDNO)
@@ -2146,7 +2146,7 @@ CPluginFSInterface::ShowProperties(const char* fsName, HWND parent, int panel,
     if (!SftpConn.StatFull(remote, size, perms, uid, gid, mtime))
     {
         char eb[600];
-        _snprintf_s(eb, _TRUNCATE, "Nelze načíst vlastnosti:\n%s", SftpConn.LastError());
+        _snprintf_s(eb, _TRUNCATE, "Cannot read properties:\n%s", SftpConn.LastError());
         SalamanderGeneral->SalMessageBox(parent, eb, LoadStr(IDS_PLUGINNAME), MB_OK | MB_ICONEXCLAMATION);
         return;
     }
@@ -2174,15 +2174,15 @@ CPluginFSInterface::ShowProperties(const char* fsName, HWND parent, int panel,
     if (focused || (selectedFiles + selectedDirs) <= 1)
     {
         _snprintf_s(info, _TRUNCATE,
-                    "Jméno:\t%s\nTyp:\t%s\nVelikost:\t%I64u B\nZměněno:\t%s\nPráva:\t%s  (%03o)\nVlastník (UID):\t%lu\nSkupina (GID):\t%lu\nCesta:\t%s",
-                    f->Name, isDir ? "adresář" : "soubor", size, timeStr, rwx,
+                    "Name:\t%s\nType:\t%s\nSize:\t%I64u B\nModified:\t%s\nPermissions:\t%s  (%03o)\nOwner (UID):\t%lu\nGroup (GID):\t%lu\nPath:\t%s",
+                    f->Name, isDir ? "directory" : "file", size, timeStr, rwx,
                     (unsigned)(perms & 0777), uid, gid, remote);
     }
     else
     {
-        _snprintf_s(info, _TRUNCATE, "Vybráno: %d souborů, %d adresářů", selectedFiles, selectedDirs);
+        _snprintf_s(info, _TRUNCATE, "Selected: %d files, %d directories", selectedFiles, selectedDirs);
     }
-    SalamanderGeneral->SalMessageBox(parent, info, "Vlastnosti", MB_OK | MB_ICONINFORMATION);
+    SalamanderGeneral->SalMessageBox(parent, info, "Properties", MB_OK | MB_ICONINFORMATION);
 }
 
 void WINAPI
@@ -2252,7 +2252,7 @@ CPluginFSInterface::ContextMenu(const char* fsName, HWND parent, int menuX, int 
     {
         int i = 0;
 
-        strcpy(nameBuf, "&Odpojit");
+        strcpy(nameBuf, "&Disconnect");
         memset(&mi, 0, sizeof(mi));
         mi.cbSize = sizeof(mi);
         mi.fMask = MIIM_TYPE | MIIM_ID | MIIM_STATE;
@@ -2274,7 +2274,7 @@ CPluginFSInterface::ContextMenu(const char* fsName, HWND parent, int menuX, int 
     {
         int i = 0;
 
-        strcpy(nameBuf, "&Odpojit");
+        strcpy(nameBuf, "&Disconnect");
         memset(&mi, 0, sizeof(mi));
         mi.cbSize = sizeof(mi);
         mi.fMask = MIIM_TYPE | MIIM_ID | MIIM_STATE;

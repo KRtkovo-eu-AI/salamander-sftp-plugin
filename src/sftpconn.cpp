@@ -44,7 +44,7 @@ std::string CSftpConnection::ToDisplayEnc(const char* in)
     if (Encoding == 2 || in == nullptr || in[0] == 0)
         return (in != nullptr) ? in : "";
     wchar_t w[2 * MAX_PATH];
-    // jen platné UTF-8 převeď; jinak ponech (server může vracet i jiné kódování)
+    // only convert valid UTF-8; otherwise keep as-is (server may return other encodings)
     if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, in, -1, w, 2 * MAX_PATH) == 0)
         return in;
     char out[4 * MAX_PATH];
@@ -52,7 +52,7 @@ std::string CSftpConnection::ToDisplayEnc(const char* in)
     return out;
 }
 
-static std::string ShellQuote(const char* s); // definice níže (u SCP helperů)
+static std::string ShellQuote(const char* s); // definition below (with SCP helpers)
 
 bool CSftpConnection::ReportProgress(const char* name, unsigned __int64 done, unsigned __int64 total)
 {
@@ -66,9 +66,10 @@ CSftpConnection::CSftpConnection()
 
 CSftpConnection::~CSftpConnection() { Disconnect(); }
 
-// Načte libssh2.dll (a její OpenSSL závislosti) z adresáře tohoto pluginu.
-// Bez toho by se kvůli pořadí hledání DLL mohla načíst cizí libssh2.dll z PATH
-// (např. z PHP). Díky delay-loadu se libssh2 importy navážou až po tomto volání.
+// Load libssh2.dll (and its OpenSSL dependencies) from this plugin's directory.
+// Without this, due to DLL search order, a foreign libssh2.dll from PATH
+// (e.g. from PHP) could be loaded. Thanks to delay-load, libssh2 imports are
+// bound only after this call.
 static void LoadBundledLibssh2()
 {
     HMODULE self = nullptr;
@@ -82,7 +83,7 @@ static void LoadBundledLibssh2()
     char* slash = strrchr(path, '\\');
     if (slash == nullptr)
         return;
-    // pořadí: nejdřív OpenSSL (závislost libssh2 i náš přímý import), pak libssh2
+    // order: first OpenSSL (dependency of libssh2 and our direct import), then libssh2
     const char* dlls[] = {"libcrypto-3-x64.dll", "libssh2.dll"};
     for (int i = 0; i < 2; i++)
     {
@@ -114,7 +115,7 @@ void CSftpConnection::SetError(const char* ctx)
         char* msg = nullptr;
         int len = 0;
         libssh2_session_last_error(Session, &msg, &len, 0);
-        _snprintf_s(buf, sizeof(buf), _TRUNCATE, "%s: %s", ctx, msg ? msg : "(neznámá chyba)");
+        _snprintf_s(buf, sizeof(buf), _TRUNCATE, "%s: %s", ctx, msg ? msg : "(unknown error)");
     }
     else
         _snprintf_s(buf, sizeof(buf), _TRUNCATE, "%s", ctx);
@@ -134,13 +135,13 @@ bool CSftpConnection::Connect(const char* host, int port, const char* user, cons
     _snprintf_s(portstr, sizeof(portstr), _TRUNCATE, "%d", port);
     if (getaddrinfo(host, portstr, &hints, &res) != 0 || !res)
     {
-        ErrorMsg = "Nelze přeložit jméno hostitele.";
+        ErrorMsg = "Cannot resolve hostname.";
         return false;
     }
     Sock = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
     if (Sock == INVALID_SOCKET || connect(Sock, res->ai_addr, (int)res->ai_addrlen) != 0)
     {
-        ErrorMsg = "Nelze navázat TCP spojení.";
+        ErrorMsg = "Cannot establish TCP connection.";
         freeaddrinfo(res);
         Disconnect();
         return false;
@@ -148,10 +149,10 @@ bool CSftpConnection::Connect(const char* host, int port, const char* user, cons
     freeaddrinfo(res);
 
     Session = libssh2_session_init();
-    if (!Session) { ErrorMsg = "libssh2_session_init selhalo."; Disconnect(); return false; }
+    if (!Session) { ErrorMsg = "libssh2_session_init failed."; Disconnect(); return false; }
     libssh2_session_set_blocking(Session, 1);
 
-    // volitelná zlib komprese přenosu (preferuj, ale povol i bez komprese)
+    // optional zlib compression (prefer, but allow without compression)
     if (useCompression)
     {
         libssh2_session_method_pref(Session, LIBSSH2_METHOD_COMP_CS, "zlib@openssh.com,zlib,none");
@@ -160,15 +161,15 @@ bool CSftpConnection::Connect(const char* host, int port, const char* user, cons
 
     if (libssh2_session_handshake(Session, Sock)) { SetError("SSH handshake"); Disconnect(); return false; }
 
-    // ověření host key (known_hosts + dotaz uživatele)
+    // host key verification (known_hosts + user prompt)
     if (!VerifyHostKey(host, port)) { Disconnect(); return false; }
 
-    // autentizace: klíč / heslo / keyboard-interactive
+    // authentication: key / password / keyboard-interactive
     if (!Authenticate(user, password, keyFile)) { Disconnect(); return false; }
 
     if (protocol == 1)
     {
-        // explicitně SCP – nepoužívej SFTP subsystém
+        // explicit SCP - do not use SFTP subsystem
         ScpMode = true;
         return true;
     }
@@ -177,11 +178,11 @@ bool CSftpConnection::Connect(const char* host, int port, const char* user, cons
     {
         if (scpFallback)
         {
-            // server nemá SFTP subsystém → nouzově SCP
+            // server has no SFTP subsystem -> fallback to SCP
             ScpMode = true;
             return true;
         }
-        ErrorMsg = "Server nepodporuje SFTP subsystém.\nZvolte protokol SCP nebo zapněte volbu „Povolit nouzově SCP\".";
+        ErrorMsg = "Server does not support SFTP subsystem.\nSelect SCP protocol or enable the \"Allow fallback SCP\" option.";
         Disconnect();
         return false;
     }
@@ -194,16 +195,16 @@ void CSftpConnection::Disconnect()
     if (Sftp) { libssh2_sftp_shutdown(Sftp); Sftp = nullptr; }
     if (Session)
     {
-        libssh2_session_disconnect(Session, "Nashledanou");
+        libssh2_session_disconnect(Session, "Goodbye");
         libssh2_session_free(Session);
         Session = nullptr;
     }
     if (Sock != INVALID_SOCKET) { closesocket(Sock); Sock = INVALID_SOCKET; }
 }
 
-// ===================== Ověření host key (known_hosts) =====================
+// ===================== Host key verification (known_hosts) =====================
 
-// mapuje libssh2 typ klíče na bit pro known_hosts (LIBSSH2_KNOWNHOST_KEY_*)
+// maps libssh2 key type to bit for known_hosts (LIBSSH2_KNOWNHOST_KEY_*)
 static int HostKeyBit(int ktype)
 {
     switch (ktype)
@@ -236,7 +237,7 @@ static const char* HostKeyTypeName(int ktype)
 #ifdef LIBSSH2_HOSTKEY_TYPE_ED25519
     case LIBSSH2_HOSTKEY_TYPE_ED25519: return "ED25519";
 #endif
-    default: return "neznámý";
+    default: return "unknown";
     }
 }
 
@@ -245,9 +246,9 @@ bool CSftpConnection::VerifyHostKey(const char* host, int port)
     size_t klen = 0;
     int ktype = 0;
     const char* hk = libssh2_session_hostkey(Session, &klen, &ktype);
-    if (hk == nullptr) { ErrorMsg = "Nelze získat host key serveru."; return false; }
+    if (hk == nullptr) { ErrorMsg = "Cannot retrieve server host key."; return false; }
 
-    // SHA256 otisk pro zobrazení uživateli
+    // SHA256 fingerprint for display to user
     char fpstr[128];
     const unsigned char* fp = (const unsigned char*)libssh2_hostkey_hash(Session, LIBSSH2_HOSTKEY_HASH_SHA256);
     if (fp != nullptr)
@@ -257,10 +258,10 @@ bool CSftpConnection::VerifyHostKey(const char* host, int port)
             p += sprintf_s(p, 4, "%02x%s", fp[i], i < 31 ? ":" : "");
     }
     else
-        lstrcpynA(fpstr, "(neznámý)", sizeof(fpstr));
+        lstrcpynA(fpstr, "(unknown)", sizeof(fpstr));
 
     int keybit = HostKeyBit(ktype);
-    int status = 0; // 0 = neznámý, 1 = změněný
+    int status = 0; // 0 = unknown, 1 = changed
 
     LIBSSH2_KNOWNHOSTS* kh = libssh2_knownhost_init(Session);
     if (kh != nullptr && !KnownHostsFile.empty())
@@ -276,11 +277,11 @@ bool CSftpConnection::VerifyHostKey(const char* host, int port)
     if (check == LIBSSH2_KNOWNHOST_CHECK_MATCH)
     {
         if (kh != nullptr) libssh2_knownhost_free(kh);
-        return true; // server je známý a klíč sedí
+        return true; // server is known and key matches
     }
     status = (check == LIBSSH2_KNOWNHOST_CHECK_MISMATCH) ? 1 : 0;
 
-    // zeptej se uživatele (bez callbacku: neznámého důvěřuj jednou, změněný odmítni)
+    // ask user (without callback: trust unknown once, reject changed)
     int decision;
     if (HostKeyCb != nullptr)
         decision = HostKeyCb(HostKeyCtx, host, port, HostKeyTypeName(ktype), fpstr, status);
@@ -290,15 +291,15 @@ bool CSftpConnection::VerifyHostKey(const char* host, int port)
     if (decision == 0)
     {
         ErrorMsg = (status == 1)
-                       ? "Host key serveru se ZMĚNIL – připojení odmítnuto (možný útok MITM)."
-                       : "Host key serveru není důvěryhodný – připojení odmítnuto.";
+                       ? "Server host key has CHANGED - connection rejected (possible MITM attack)."
+                       : "Server host key is not trusted - connection rejected.";
         if (kh != nullptr) libssh2_knownhost_free(kh);
         return false;
     }
 
-    if (decision == 2 && kh != nullptr) // důvěřovat a uložit
+    if (decision == 2 && kh != nullptr) // trust and save
     {
-        if (khentry != nullptr) // přepiš změněný záznam
+        if (khentry != nullptr) // overwrite changed entry
             libssh2_knownhost_del(kh, khentry);
         libssh2_knownhost_addc(kh, host, nullptr, hk, klen, nullptr, 0,
                                LIBSSH2_KNOWNHOST_TYPE_PLAIN | LIBSSH2_KNOWNHOST_KEYENC_RAW | keybit, nullptr);
@@ -309,9 +310,9 @@ bool CSftpConnection::VerifyHostKey(const char* host, int port)
     return true;
 }
 
-// ===================== Autentizace (heslo / klíč / keyboard-interactive) =====================
+// ===================== Authentication (password / key / keyboard-interactive) =====================
 
-// data předaná do KBI callbacku přes session abstract
+// data passed to KBI callback via session abstract
 struct CKbdData
 {
     const char* password;
@@ -333,7 +334,7 @@ static void KbdInteractiveThunk(const char* /*name*/, int /*name_len*/,
         bool got = false;
         if (d != nullptr && d->password != nullptr && !d->used)
         {
-            // první výzva = typicky heslo → použij uložené heslo
+            // first prompt = typically password -> use stored password
             lstrcpynA(buf, d->password, sizeof(buf));
             d->used = true;
             got = true;
@@ -368,28 +369,28 @@ bool CSftpConnection::Authenticate(const char* user, const char* password, const
     bool hasPwd = authlist != nullptr && strstr(authlist, "password") != nullptr;
     bool hasKbd = authlist != nullptr && strstr(authlist, "keyboard-interactive") != nullptr;
 
-    // 1) autentizace klíčem (vč. .ppk)
+    // 1) key authentication (including .ppk)
     if (keyFile != nullptr && keyFile[0] != 0)
     {
         int ppk = TryPpkAuth(user, keyFile, password);
         if (ppk == 1) return true;
-        if (ppk == 0) return false; // .ppk rozpoznán, ale selhal (chyba je nastavená)
-        // ppk == -1: není .ppk → standardní OpenSSH/PEM klíč
+        if (ppk == 0) return false; // .ppk recognized but failed (error is set)
+        // ppk == -1: not .ppk -> standard OpenSSH/PEM key
         if (libssh2_userauth_publickey_fromfile(Session, user, nullptr, keyFile,
                                                 (password != nullptr && password[0] != 0) ? password : nullptr) == 0)
             return true;
-        SetError("Autentizace klíčem");
+        SetError("Key authentication");
         return false;
     }
 
-    // 2) heslo
+    // 2) password
     if (authlist == nullptr || hasPwd)
     {
         if (libssh2_userauth_password(Session, user, password) == 0)
             return true;
     }
 
-    // 3) keyboard-interactive (i jako fallback po neúspěšném hesle)
+    // 3) keyboard-interactive (also as fallback after failed password)
     if (hasKbd || authlist == nullptr)
     {
         CKbdData d;
@@ -405,13 +406,13 @@ bool CSftpConnection::Authenticate(const char* user, const char* password, const
         if (rc == 0) return true;
     }
 
-    SetError("Autentizace selhala");
+    SetError("Authentication failed");
     return false;
 }
 
-// ===================== PuTTY .ppk klíče =====================
+// ===================== PuTTY .ppk keys =====================
 
-// přečte SSH string/mpint z blobu (uint32 délka + data); posune offset
+// read SSH string/mpint from blob (uint32 length + data); advance offset
 static bool SshReadField(const std::vector<unsigned char>& blob, size_t& off,
                          const unsigned char** data, unsigned& len)
 {
@@ -425,13 +426,13 @@ static bool SshReadField(const std::vector<unsigned char>& blob, size_t& off,
     return true;
 }
 
-// base64 dekódování (OpenSSL)
+// base64 decoding (OpenSSL)
 static std::vector<unsigned char> B64Decode(const std::string& s)
 {
     std::vector<unsigned char> out(s.size());
     int n = EVP_DecodeBlock((unsigned char*)out.data(), (const unsigned char*)s.data(), (int)s.size());
     if (n < 0) return std::vector<unsigned char>();
-    // EVP_DecodeBlock zarovnává na 3 bajty; odečti padding '='
+    // EVP_DecodeBlock aligns to 3 bytes; subtract padding '='
     size_t pad = 0;
     if (!s.empty() && s[s.size() - 1] == '=') pad++;
     if (s.size() >= 2 && s[s.size() - 2] == '=') pad++;
@@ -439,7 +440,7 @@ static std::vector<unsigned char> B64Decode(const std::string& s)
     return out;
 }
 
-// derivace klíče pro zašifrovaný PPK v2 (AES-256-CBC, SHA1)
+// key derivation for encrypted PPK v2 (AES-256-CBC, SHA1)
 static void Ppk2DeriveKey(const std::string& passphrase, unsigned char outKey[32])
 {
     for (int seq = 0; seq < 2; seq++)
@@ -455,7 +456,7 @@ static void Ppk2DeriveKey(const std::string& passphrase, unsigned char outKey[32
     }
 }
 
-// derivace klíče+IV pro PPK v3 (Argon2id) – vrací false pokud OpenSSL Argon2 nemá
+// key+IV derivation for PPK v3 (Argon2id) - returns false if OpenSSL lacks Argon2
 static bool Ppk3DeriveKey(const std::string& passphrase, const std::vector<unsigned char>& salt,
                           unsigned mem, unsigned passes, unsigned par, unsigned char out[80])
 {
@@ -481,7 +482,7 @@ static bool Ppk3DeriveKey(const std::string& passphrase, const std::vector<unsig
 
 int CSftpConnection::TryPpkAuth(const char* user, const char* keyFile, const char* passphrase)
 {
-    // načti soubor
+    // load file
     FILE* f = nullptr;
     fopen_s(&f, keyFile, "rb");
     if (f == nullptr) return -1;
@@ -492,9 +493,9 @@ int CSftpConnection::TryPpkAuth(const char* user, const char* keyFile, const cha
     fclose(f);
 
     if (text.compare(0, 20, "PuTTY-User-Key-File-") != 0)
-        return -1; // není .ppk
+        return -1; // not .ppk
 
-    // jednoduchý parser řádkových hlaviček "Klic: hodnota" + víceřádkové base64 sekce
+    // simple parser for "Key: value" line headers + multi-line base64 sections
     int version = (text[20] == '3') ? 3 : 2;
     std::string algo, encryption, pubB64, privB64;
     std::string a2salt; unsigned a2mem = 0, a2pass = 0, a2par = 0;
@@ -533,14 +534,14 @@ int CSftpConnection::TryPpkAuth(const char* user, const char* keyFile, const cha
 
     std::vector<unsigned char> pub = B64Decode(pubB64);
     std::vector<unsigned char> priv = B64Decode(privB64);
-    if (pub.empty() || priv.empty()) { SetError("Neplatný .ppk soubor"); return 0; }
+    if (pub.empty() || priv.empty()) { SetError("Invalid .ppk file"); return 0; }
 
     bool encrypted = (encryption == "aes256-cbc");
     if (encrypted)
     {
         if (passphrase == nullptr || passphrase[0] == 0)
         {
-            ErrorMsg = ".ppk klíč je zašifrovaný – zadejte heslo (frázi) klíče do pole Heslo.";
+            ErrorMsg = ".ppk key is encrypted - enter the key passphrase in the Password field.";
             return 0;
         }
         unsigned char keyiv[80];
@@ -552,7 +553,7 @@ int CSftpConnection::TryPpkAuth(const char* user, const char* keyFile, const cha
             std::vector<unsigned char> salt = B64Decode(a2salt);
             if (!Ppk3DeriveKey(passphrase, salt, a2mem, a2pass, a2par ? a2par : 1, keyiv))
             {
-                ErrorMsg = "Zašifrovaný .ppk v3 (Argon2) – tato verze OpenSSL ho neumí. Převeďte klíč přes PuTTYgen na nešifrovaný nebo OpenSSH.";
+                ErrorMsg = "Encrypted .ppk v3 (Argon2) - this version of OpenSSL does not support it. Convert the key with PuTTYgen to unencrypted or OpenSSH format.";
                 return 0;
             }
             aeskey = keyiv;
@@ -560,10 +561,10 @@ int CSftpConnection::TryPpkAuth(const char* user, const char* keyFile, const cha
         }
         else
         {
-            Ppk2DeriveKey(passphrase, keyiv); // 32 bajtů klíč, IV nuly
+            Ppk2DeriveKey(passphrase, keyiv); // 32 bytes key, IV zeros
             aeskey = keyiv;
         }
-        // dešifruj priv (AES-256-CBC, bez paddingu)
+        // decrypt priv (AES-256-CBC, no padding)
         std::vector<unsigned char> dec(priv.size());
         EVP_CIPHER_CTX* c = EVP_CIPHER_CTX_new();
         int outl = 0, tmpl = 0;
@@ -576,11 +577,11 @@ int CSftpConnection::TryPpkAuth(const char* user, const char* keyFile, const cha
         priv = dec;
     }
 
-    // rozeber public blob: první pole = název algoritmu
+    // parse public blob: first field = algorithm name
     size_t po = 0;
     const unsigned char* d0;
     unsigned l0;
-    if (!SshReadField(pub, po, &d0, l0)) { SetError("Neplatný .ppk (public)"); return 0; }
+    if (!SshReadField(pub, po, &d0, l0)) { SetError("Invalid .ppk (public)"); return 0; }
     std::string keyalg((const char*)d0, l0);
 
     EVP_PKEY* pkey = nullptr;
@@ -589,21 +590,21 @@ int CSftpConnection::TryPpkAuth(const char* user, const char* keyFile, const cha
     {
         const unsigned char *eD, *nD;
         unsigned eL, nL;
-        if (!SshReadField(pub, po, &eD, eL) || !SshReadField(pub, po, &nD, nL)) { SetError("Neplatný RSA .ppk"); return 0; }
+        if (!SshReadField(pub, po, &eD, eL) || !SshReadField(pub, po, &nD, nL)) { SetError("Invalid RSA .ppk"); return 0; }
         size_t pp = 0;
         const unsigned char *dD, *pD, *qD, *iD;
         unsigned dL, pL, qL, iL;
         // private blob: mpint d, p, q, iqmp
         if (!SshReadField(priv, pp, &dD, dL) || !SshReadField(priv, pp, &pD, pL) ||
             !SshReadField(priv, pp, &qD, qL) || !SshReadField(priv, pp, &iD, iL))
-        { SetError("Neplatný RSA .ppk (private)"); return 0; }
+        { SetError("Invalid RSA .ppk (private)"); return 0; }
         BIGNUM* bn_e = BN_bin2bn(eD, eL, nullptr);
         BIGNUM* bn_n = BN_bin2bn(nD, nL, nullptr);
         BIGNUM* bn_d = BN_bin2bn(dD, dL, nullptr);
         BIGNUM* bn_p = BN_bin2bn(pD, pL, nullptr);
         BIGNUM* bn_q = BN_bin2bn(qD, qL, nullptr);
         BIGNUM* bn_iqmp = BN_bin2bn(iD, iL, nullptr);
-        // dopočítej CRT exponenty: dmp1 = d mod (p-1), dmq1 = d mod (q-1)
+        // compute CRT exponents: dmp1 = d mod (p-1), dmq1 = d mod (q-1)
         BN_CTX* bnctx = BN_CTX_new();
         BIGNUM* p1 = BN_dup(bn_p); BN_sub_word(p1, 1);
         BIGNUM* q1 = BN_dup(bn_q); BN_sub_word(q1, 1);
@@ -611,7 +612,7 @@ int CSftpConnection::TryPpkAuth(const char* user, const char* keyFile, const cha
         BIGNUM* dmq1 = BN_new(); BN_mod(dmq1, bn_d, q1, bnctx);
         BN_free(p1); BN_free(q1); BN_CTX_free(bnctx);
         RSA* rsa = RSA_new();
-        RSA_set0_key(rsa, bn_n, bn_e, bn_d);          // přebírá vlastnictví
+        RSA_set0_key(rsa, bn_n, bn_e, bn_d);          // takes ownership
         RSA_set0_factors(rsa, bn_p, bn_q);
         RSA_set0_crt_params(rsa, dmp1, dmq1, bn_iqmp);
         rsaForPem = rsa;
@@ -622,21 +623,21 @@ int CSftpConnection::TryPpkAuth(const char* user, const char* keyFile, const cha
     {
         const unsigned char* pubKey;
         unsigned pubL;
-        if (!SshReadField(pub, po, &pubKey, pubL)) { SetError("Neplatný ed25519 .ppk"); return 0; }
+        if (!SshReadField(pub, po, &pubKey, pubL)) { SetError("Invalid ed25519 .ppk"); return 0; }
         size_t pp = 0;
         const unsigned char* privKey;
         unsigned privL;
-        if (!SshReadField(priv, pp, &privKey, privL) || privL < 32) { SetError("Neplatný ed25519 .ppk (private)"); return 0; }
+        if (!SshReadField(priv, pp, &privKey, privL) || privL < 32) { SetError("Invalid ed25519 .ppk (private)"); return 0; }
         pkey = EVP_PKEY_new_raw_private_key(EVP_PKEY_ED25519, nullptr, privKey, 32);
     }
     else
     {
-        ErrorMsg = std::string("Nepodporovaný typ .ppk klíče: ") + keyalg + " (podporováno: ssh-rsa, ssh-ed25519).";
+        ErrorMsg = std::string("Unsupported .ppk key type: ") + keyalg + " (supported: ssh-rsa, ssh-ed25519).";
         return 0;
     }
-    if (pkey == nullptr) { SetError("Nelze sestavit klíč z .ppk"); return 0; }
+    if (pkey == nullptr) { SetError("Cannot build key from .ppk"); return 0; }
 
-    // exportuj do PEM (PKCS#8) a předej libssh2
+    // export to PEM (PKCS#8) and pass to libssh2
     BIO* bio = BIO_new(BIO_s_mem());
     int wrote = (rsaForPem != nullptr)
                     ? PEM_write_bio_RSAPrivateKey(bio, rsaForPem, nullptr, nullptr, 0, nullptr, nullptr)
@@ -647,7 +648,7 @@ int CSftpConnection::TryPpkAuth(const char* user, const char* keyFile, const cha
         unsigned long e = ERR_get_error();
         ERR_error_string_n(e, errbuf, sizeof(errbuf));
         char diag[400];
-        sprintf_s(diag, "Nelze převést .ppk na PEM [bio=%p pkey=%p rsa=%p err=0x%lx %s]",
+        sprintf_s(diag, "Cannot convert .ppk to PEM [bio=%p pkey=%p rsa=%p err=0x%lx %s]",
                   (void*)bio, (void*)pkey, (void*)rsaForPem, e, errbuf);
         BIO_free(bio);
         EVP_PKEY_free(pkey);
@@ -660,8 +661,8 @@ int CSftpConnection::TryPpkAuth(const char* user, const char* keyFile, const cha
                                                    nullptr, 0, pem, pemlen, nullptr);
     BIO_free(bio);
     EVP_PKEY_free(pkey);
-    if (rc == 0) return 1; // úspěch
-    SetError("Autentizace .ppk klíčem selhala");
+    if (rc == 0) return 1; // success
+    SetError(".ppk key authentication failed");
     return 0;
 }
 
@@ -686,7 +687,7 @@ bool CSftpConnection::RemoteFileSize(const char* remotePath, unsigned __int64& s
     return true;
 }
 
-// uvozovkování cesty pro shell (POSIX): obal do '...' a escapuj vnitřní '
+// shell-quoting for path (POSIX): wrap in '...' and escape inner '
 static std::string ShellQuote(const char* s)
 {
     std::string q = "'";
@@ -701,7 +702,7 @@ static std::string ShellQuote(const char* s)
     return q;
 }
 
-// převede rwx řetězec práv (např. "rwxr-x---") na osmičkový mód
+// convert rwx permission string (e.g. "rwxr-x---") to octal mode
 static unsigned long RwxToMode(const char* rwx)
 {
     unsigned long m = 0;
@@ -710,7 +711,7 @@ static unsigned long RwxToMode(const char* rwx)
         m <<= 1;
         char c = rwx[i];
         if (c != '-' && c != ' ')
-            m |= 1; // r/w/x/s/t/S/T -> bit nastaven
+            m |= 1; // r/w/x/s/t/S/T -> bit set
     }
     return m;
 }
@@ -719,10 +720,10 @@ bool CSftpConnection::ExecRaw(const char* command, std::string& out, int* exitCo
 {
     out.clear();
     LIBSSH2_CHANNEL* ch = libssh2_channel_open_session(Session);
-    if (!ch) { SetError("Otevření kanálu"); return false; }
+    if (!ch) { SetError("Opening channel"); return false; }
     if (libssh2_channel_exec(ch, command))
     {
-        SetError("Spuštění příkazu");
+        SetError("Executing command");
         libssh2_channel_free(ch);
         return false;
     }
@@ -747,13 +748,13 @@ bool CSftpConnection::ExecSimple(const char* command)
         return false;
     if (code != 0)
     {
-        ErrorMsg = out.empty() ? "Příkaz na serveru selhal." : out;
+        ErrorMsg = out.empty() ? "Command on server failed." : out;
         return false;
     }
     return true;
 }
 
-// SCP výpis adresáře přes "ls -la" (epoch čas → jedno pole, kvůli mezerám v názvech)
+// SCP directory listing via "ls -la" (epoch time -> single field, handles spaces in names)
 bool CSftpConnection::ScpListDir(const char* remotePath, std::vector<CSftpEntry>& out)
 {
     out.clear();
@@ -764,7 +765,7 @@ bool CSftpConnection::ScpListDir(const char* remotePath, std::vector<CSftpEntry>
         return false;
     if (code != 0)
     {
-        ErrorMsg = "Nelze vypsat adresář (SCP/ls).";
+        ErrorMsg = "Cannot list directory (SCP/ls).";
         return false;
     }
     size_t pos = 0;
@@ -777,12 +778,12 @@ bool CSftpConnection::ScpListDir(const char* remotePath, std::vector<CSftpEntry>
             line.pop_back();
         if (line.empty() || line.compare(0, 6, "total ") == 0)
             continue;
-        // pole: perms links owner group size mtime name...
+        // fields: perms links owner group size mtime name...
         char perms[16] = {0}, owner[128] = {0}, group[128] = {0};
         unsigned __int64 size = 0;
         unsigned long mtime = 0;
         int links = 0;
-        // ručně rozeber prvních 6 polí, zbytek = název
+        // manually parse first 6 fields, rest = name
         std::vector<std::string> f;
         {
             size_t i = 0;
@@ -794,7 +795,7 @@ bool CSftpConnection::ScpListDir(const char* remotePath, std::vector<CSftpEntry>
                 if (i > start) f.push_back(line.substr(start, i - start));
             }
             while (i < line.size() && (line[i] == ' ' || line[i] == '\t')) i++;
-            if (f.size() < 6) continue; // nečekaný řádek
+            if (f.size() < 6) continue; // unexpected line
             std::string name = line.substr(i);
             lstrcpynA(perms, f[0].c_str(), sizeof(perms));
             links = atoi(f[1].c_str());
@@ -808,7 +809,7 @@ bool CSftpConnection::ScpListDir(const char* remotePath, std::vector<CSftpEntry>
             e.IsLink = (perms[0] == 'l');
             if (e.IsLink)
             {
-                // "name -> target" → ber jen název před " -> "
+                // "name -> target" -> take only name before " -> "
                 size_t arrow = name.find(" -> ");
                 if (arrow != std::string::npos)
                     name = name.substr(0, arrow);
@@ -834,24 +835,24 @@ bool CSftpConnection::ScpDownload(const char* remotePath, const char* localPath)
     libssh2_struct_stat st;
     memset(&st, 0, sizeof(st));
     LIBSSH2_CHANNEL* ch = libssh2_scp_recv2(Session, remotePath, &st);
-    if (!ch) { SetError("SCP stažení (otevření)"); return false; }
+    if (!ch) { SetError("SCP download (open)"); return false; }
     FILE* f = nullptr;
     fopen_s(&f, localPath, "wb");
-    if (!f) { ErrorMsg = "Nelze vytvořit lokální soubor."; libssh2_channel_free(ch); return false; }
+    if (!f) { ErrorMsg = "Cannot create local file."; libssh2_channel_free(ch); return false; }
     unsigned __int64 total = (unsigned __int64)st.st_size;
     unsigned __int64 done = 0;
     char buf[65536];
     bool ok = true;
-    if (!ReportProgress(localPath, 0, total)) { ErrorMsg = "Přerušeno uživatelem."; fclose(f); libssh2_channel_free(ch); return false; }
+    if (!ReportProgress(localPath, 0, total)) { ErrorMsg = "Cancelled by user."; fclose(f); libssh2_channel_free(ch); return false; }
     while (done < total)
     {
         size_t want = (size_t)((total - done) < sizeof(buf) ? (total - done) : sizeof(buf));
         ssize_t n = libssh2_channel_read(ch, buf, want);
-        if (n < 0) { SetError("SCP čtení"); ok = false; break; }
+        if (n < 0) { SetError("SCP read"); ok = false; break; }
         if (n == 0) break;
-        if (fwrite(buf, 1, (size_t)n, f) != (size_t)n) { ErrorMsg = "Zápis na disk selhal."; ok = false; break; }
+        if (fwrite(buf, 1, (size_t)n, f) != (size_t)n) { ErrorMsg = "Disk write failed."; ok = false; break; }
         done += (unsigned __int64)n;
-        if (!ReportProgress(localPath, done, total)) { ErrorMsg = "Přerušeno uživatelem."; ok = false; break; }
+        if (!ReportProgress(localPath, done, total)) { ErrorMsg = "Cancelled by user."; ok = false; break; }
     }
     fclose(f);
     libssh2_channel_close(ch);
@@ -863,17 +864,17 @@ bool CSftpConnection::ScpUpload(const char* localPath, const char* remotePath)
 {
     FILE* f = nullptr;
     fopen_s(&f, localPath, "rb");
-    if (!f) { ErrorMsg = "Nelze otevřít lokální soubor."; return false; }
+    if (!f) { ErrorMsg = "Cannot open local file."; return false; }
     _fseeki64(f, 0, SEEK_END);
     unsigned __int64 total = (unsigned __int64)_ftelli64(f);
     _fseeki64(f, 0, SEEK_SET);
     LIBSSH2_CHANNEL* ch = libssh2_scp_send64(Session, remotePath, 0644, (libssh2_int64_t)total, 0, 0);
-    if (!ch) { SetError("SCP nahrání (otevření)"); fclose(f); return false; }
+    if (!ch) { SetError("SCP upload (open)"); fclose(f); return false; }
     char buf[65536];
     bool ok = true;
     unsigned __int64 done = 0;
     size_t n;
-    if (!ReportProgress(localPath, 0, total)) { ErrorMsg = "Přerušeno uživatelem."; fclose(f); libssh2_channel_free(ch); return false; }
+    if (!ReportProgress(localPath, 0, total)) { ErrorMsg = "Cancelled by user."; fclose(f); libssh2_channel_free(ch); return false; }
     while ((n = fread(buf, 1, sizeof(buf), f)) > 0)
     {
         char* p = buf;
@@ -881,12 +882,12 @@ bool CSftpConnection::ScpUpload(const char* localPath, const char* remotePath)
         while (left > 0)
         {
             ssize_t w = libssh2_channel_write(ch, p, left);
-            if (w < 0) { SetError("SCP zápis"); ok = false; break; }
+            if (w < 0) { SetError("SCP write"); ok = false; break; }
             p += w; left -= (size_t)w;
         }
         if (!ok) break;
         done += (unsigned __int64)n;
-        if (!ReportProgress(localPath, done, total)) { ErrorMsg = "Přerušeno uživatelem."; ok = false; break; }
+        if (!ReportProgress(localPath, done, total)) { ErrorMsg = "Cancelled by user."; ok = false; break; }
     }
     fclose(f);
     if (ok)
@@ -907,7 +908,7 @@ bool CSftpConnection::ListDir(const char* remotePath, std::vector<CSftpEntry>& o
         return ScpListDir(remotePath, out);
     out.clear();
     LIBSSH2_SFTP_HANDLE* dir = libssh2_sftp_opendir(Sftp, remotePath);
-    if (!dir) { SetError("Otevření adresáře"); return false; }
+    if (!dir) { SetError("Opening directory"); return false; }
     char name[1024];
     char longentry[2048];
     LIBSSH2_SFTP_ATTRIBUTES attrs;
@@ -924,7 +925,7 @@ bool CSftpConnection::ListDir(const char* remotePath, std::vector<CSftpEntry>& o
         e.MTime = (attrs.flags & LIBSSH2_SFTP_ATTR_ACMODTIME) ? (unsigned long)attrs.mtime : 0;
         e.Permissions = (attrs.flags & LIBSSH2_SFTP_ATTR_PERMISSIONS) ? attrs.permissions : 0;
 
-        // vlastník/skupina: zkus z "ls -l" longentry (pole 2 a 3), jinak UID/GID
+        // owner/group: try from "ls -l" longentry (fields 2 and 3), else UID/GID
         e.Owner.clear();
         e.Group.clear();
         if (longentry[0] != 0)
@@ -956,7 +957,7 @@ bool CSftpConnection::ListDir(const char* remotePath, std::vector<CSftpEntry>& o
             e.Group = b;
         }
         if (e.IsLink)
-            e.IsDir = false; // symlink zobrazíme jako soubor (cíl neřešíme)
+            e.IsDir = false; // symlink displayed as file (target not resolved)
         out.push_back(e);
     }
     libssh2_sftp_closedir(dir);
@@ -981,7 +982,7 @@ int CSftpConnection::PathType(const char* remotePath)
     }
     LIBSSH2_SFTP_ATTRIBUTES a;
     if (libssh2_sftp_stat(Sftp, remotePath, &a) != 0)
-        return 0; // neexistuje (nebo nedostupné)
+        return 0; // does not exist (or unavailable)
     if ((a.flags & LIBSSH2_SFTP_ATTR_PERMISSIONS) && LIBSSH2_SFTP_S_ISDIR(a.permissions))
         return 2;
     return 1;
@@ -1004,7 +1005,7 @@ bool CSftpConnection::Chmod(const char* remotePath, unsigned long mode)
     a.permissions = mode;
     if (libssh2_sftp_setstat(Sftp, remotePath, &a) != 0)
     {
-        SetError("Změna práv");
+                SetError("Changing permissions");
         return false;
     }
     return true;
@@ -1021,7 +1022,7 @@ bool CSftpConnection::GetPermissions(const char* remotePath, unsigned long& mode
         int code = -1;
         if (!ExecRaw(cmd.c_str(), out, &code) || code != 0)
         {
-            ErrorMsg = "Načtení práv (SCP/stat).";
+            ErrorMsg = "Reading permissions (SCP/stat).";
             return false;
         }
         mode = strtoul(out.c_str(), nullptr, 8) & 0777;
@@ -1031,7 +1032,7 @@ bool CSftpConnection::GetPermissions(const char* remotePath, unsigned long& mode
     memset(&a, 0, sizeof(a));
     if (libssh2_sftp_stat(Sftp, remotePath, &a) != 0)
     {
-        SetError("Načtení práv");
+        SetError("Reading permissions");
         return false;
     }
     mode = a.permissions & 0777;
@@ -1050,13 +1051,13 @@ bool CSftpConnection::StatFull(const char* remotePath, unsigned __int64& size, u
         int code = -1;
         if (!ExecRaw(cmd.c_str(), out, &code) || code != 0)
         {
-            ErrorMsg = "Načtení informací (SCP/stat).";
+            ErrorMsg = "Reading info (SCP/stat).";
             return false;
         }
         unsigned long pmode = 0;
         if (sscanf_s(out.c_str(), "%lo %llu %lu %lu %lu", &pmode, &size, &uid, &gid, &mtime) < 5)
         {
-            ErrorMsg = "Neočekávaný výstup stat.";
+            ErrorMsg = "Unexpected stat output.";
             return false;
         }
         perms = pmode & 0777;
@@ -1066,7 +1067,7 @@ bool CSftpConnection::StatFull(const char* remotePath, unsigned __int64& size, u
     memset(&a, 0, sizeof(a));
     if (libssh2_sftp_stat(Sftp, remotePath, &a) != 0)
     {
-        SetError("Načtení informací");
+        SetError("Reading info");
         return false;
     }
     size = (a.flags & LIBSSH2_SFTP_ATTR_SIZE) ? a.filesize : 0;
@@ -1082,33 +1083,33 @@ bool CSftpConnection::Download(const char* remotePath, const char* localPath, un
     std::string _rp = ToServerEnc(remotePath);
     remotePath = _rp.c_str();
     if (ScpMode)
-        return ScpDownload(remotePath, localPath); // SCP resume neumí
+        return ScpDownload(remotePath, localPath); // SCP resume not supported
     LIBSSH2_SFTP_HANDLE* h = libssh2_sftp_open(Sftp, remotePath, LIBSSH2_FXF_READ, 0);
-    if (!h) { SetError("Otevření vzdáleného souboru"); return false; }
+    if (!h) { SetError("Opening remote file"); return false; }
     LIBSSH2_SFTP_ATTRIBUTES at;
     unsigned __int64 total = 0;
     if (libssh2_sftp_fstat(h, &at) == 0 && (at.flags & LIBSSH2_SFTP_ATTR_SIZE))
         total = at.filesize;
     if (resumeOffset > 0 && resumeOffset <= total)
-        libssh2_sftp_seek64(h, resumeOffset); // pokračuj od dané pozice
+        libssh2_sftp_seek64(h, resumeOffset); // resume from given position
     else
         resumeOffset = 0;
     FILE* f = nullptr;
     fopen_s(&f, localPath, resumeOffset > 0 ? "r+b" : "wb");
-    if (!f) { ErrorMsg = "Nelze otevřít lokální soubor."; libssh2_sftp_close(h); return false; }
+    if (!f) { ErrorMsg = "Cannot open local file."; libssh2_sftp_close(h); return false; }
     if (resumeOffset > 0) _fseeki64(f, (long long)resumeOffset, SEEK_SET);
     char buf[65536];
     bool ok = true;
     unsigned __int64 done = resumeOffset;
-    if (!ReportProgress(localPath, done, total)) { ErrorMsg = "Přerušeno uživatelem."; fclose(f); libssh2_sftp_close(h); return false; }
+    if (!ReportProgress(localPath, done, total)) { ErrorMsg = "Cancelled by user."; fclose(f); libssh2_sftp_close(h); return false; }
     for (;;)
     {
         ssize_t n = libssh2_sftp_read(h, buf, sizeof(buf));
         if (n == 0) break;
-        if (n < 0) { SetError("Čtení vzdáleného souboru"); ok = false; break; }
-        if (fwrite(buf, 1, (size_t)n, f) != (size_t)n) { ErrorMsg = "Zápis na disk selhal."; ok = false; break; }
+        if (n < 0) { SetError("Reading remote file"); ok = false; break; }
+        if (fwrite(buf, 1, (size_t)n, f) != (size_t)n) { ErrorMsg = "Disk write failed."; ok = false; break; }
         done += (unsigned __int64)n;
-        if (!ReportProgress(localPath, done, total)) { ErrorMsg = "Přerušeno uživatelem."; ok = false; break; }
+        if (!ReportProgress(localPath, done, total)) { ErrorMsg = "Cancelled by user."; ok = false; break; }
     }
     fclose(f);
     libssh2_sftp_close(h);
@@ -1120,14 +1121,14 @@ bool CSftpConnection::Upload(const char* localPath, const char* remotePath, unsi
     std::string _rp = ToServerEnc(remotePath);
     remotePath = _rp.c_str();
     if (ScpMode)
-        return ScpUpload(localPath, remotePath); // SCP resume neumí
+        return ScpUpload(localPath, remotePath); // SCP resume not supported
     FILE* f = nullptr;
     fopen_s(&f, localPath, "rb");
-    if (!f) { ErrorMsg = "Nelze otevřít lokální soubor."; return false; }
+    if (!f) { ErrorMsg = "Cannot open local file."; return false; }
     _fseeki64(f, 0, SEEK_END);
     unsigned __int64 total = (unsigned __int64)_ftelli64(f);
     _fseeki64(f, 0, SEEK_SET);
-    // resume: otevři bez TRUNC a naseek se na pozici; jinak přepiš od začátku
+    // resume: open without TRUNC and seek to position; otherwise overwrite from beginning
     long flags = LIBSSH2_FXF_WRITE | LIBSSH2_FXF_CREAT;
     if (resumeOffset > 0 && resumeOffset < total)
         ; // ponech bez TRUNC
@@ -1138,7 +1139,7 @@ bool CSftpConnection::Upload(const char* localPath, const char* remotePath, unsi
     }
     LIBSSH2_SFTP_HANDLE* h = libssh2_sftp_open(Sftp, remotePath, flags,
         LIBSSH2_SFTP_S_IRUSR | LIBSSH2_SFTP_S_IWUSR | LIBSSH2_SFTP_S_IRGRP | LIBSSH2_SFTP_S_IROTH);
-    if (!h) { SetError("Vytvoření vzdáleného souboru"); fclose(f); return false; }
+    if (!h) { SetError("Creating remote file"); fclose(f); return false; }
     if (resumeOffset > 0)
     {
         libssh2_sftp_seek64(h, resumeOffset);
@@ -1148,7 +1149,7 @@ bool CSftpConnection::Upload(const char* localPath, const char* remotePath, unsi
     bool ok = true;
     unsigned __int64 done = resumeOffset;
     size_t n;
-    if (!ReportProgress(localPath, done, total)) { ErrorMsg = "Přerušeno uživatelem."; fclose(f); libssh2_sftp_close(h); return false; }
+    if (!ReportProgress(localPath, done, total)) { ErrorMsg = "Cancelled by user."; fclose(f); libssh2_sftp_close(h); return false; }
     while ((n = fread(buf, 1, sizeof(buf), f)) > 0)
     {
         char* p = buf;
@@ -1156,12 +1157,12 @@ bool CSftpConnection::Upload(const char* localPath, const char* remotePath, unsi
         while (left > 0)
         {
             ssize_t w = libssh2_sftp_write(h, p, left);
-            if (w < 0) { SetError("Zápis vzdáleného souboru"); ok = false; break; }
+            if (w < 0) { SetError("Writing remote file"); ok = false; break; }
             p += w; left -= (size_t)w;
         }
         if (!ok) break;
         done += (unsigned __int64)n;
-        if (!ReportProgress(localPath, done, total)) { ErrorMsg = "Přerušeno uživatelem."; ok = false; break; }
+        if (!ReportProgress(localPath, done, total)) { ErrorMsg = "Cancelled by user."; ok = false; break; }
     }
     fclose(f);
     libssh2_sftp_close(h);
@@ -1178,7 +1179,7 @@ bool CSftpConnection::GetSecurityInfo(std::string& out)
     int ktype = 0;
     size_t klen = 0;
     const char* hk = libssh2_session_hostkey(Session, &klen, &ktype);
-    const char* ktypeName = "neznámý";
+    const char* ktypeName = "unknown";
     if (ktype == LIBSSH2_HOSTKEY_TYPE_RSA) ktypeName = "RSA";
     else if (ktype == LIBSSH2_HOSTKEY_TYPE_DSS) ktypeName = "DSS";
 #ifdef LIBSSH2_HOSTKEY_TYPE_ECDSA_256
@@ -1225,10 +1226,10 @@ bool CSftpConnection::ExecCommand(const char* command, std::string& output)
 {
     output.clear();
     LIBSSH2_CHANNEL* ch = libssh2_channel_open_session(Session);
-    if (!ch) { SetError("Otevření kanálu"); return false; }
+    if (!ch) { SetError("Opening channel"); return false; }
     if (libssh2_channel_exec(ch, command))
     {
-        SetError("Spuštění příkazu");
+        SetError("Executing command");
         libssh2_channel_free(ch);
         return false;
     }
@@ -1252,7 +1253,7 @@ bool CSftpConnection::MakeDir(const char* remotePath)
         return ExecSimple(("mkdir -- " + ShellQuote(remotePath)).c_str());
     if (libssh2_sftp_mkdir(Sftp, remotePath,
             LIBSSH2_SFTP_S_IRWXU | LIBSSH2_SFTP_S_IRGRP | LIBSSH2_SFTP_S_IXGRP | LIBSSH2_SFTP_S_IROTH | LIBSSH2_SFTP_S_IXOTH))
-    { SetError("Vytvoření adresáře"); return false; }
+    { SetError("Creating directory"); return false; }
     return true;
 }
 
@@ -1262,7 +1263,7 @@ bool CSftpConnection::RemoveDir(const char* remotePath)
     remotePath = _rp.c_str();
     if (ScpMode)
         return ExecSimple(("rmdir -- " + ShellQuote(remotePath)).c_str());
-    if (libssh2_sftp_rmdir(Sftp, remotePath)) { SetError("Smazání adresáře"); return false; }
+    if (libssh2_sftp_rmdir(Sftp, remotePath)) { SetError("Deleting directory"); return false; }
     return true;
 }
 
@@ -1272,7 +1273,7 @@ bool CSftpConnection::RemoveFile(const char* remotePath)
     remotePath = _rp.c_str();
     if (ScpMode)
         return ExecSimple(("rm -f -- " + ShellQuote(remotePath)).c_str());
-    if (libssh2_sftp_unlink(Sftp, remotePath)) { SetError("Smazání souboru"); return false; }
+    if (libssh2_sftp_unlink(Sftp, remotePath)) { SetError("Deleting file"); return false; }
     return true;
 }
 
@@ -1283,6 +1284,6 @@ bool CSftpConnection::Rename(const char* oldPath, const char* newPath)
     newPath = _np.c_str();
     if (ScpMode)
         return ExecSimple(("mv -- " + ShellQuote(oldPath) + " " + ShellQuote(newPath)).c_str());
-    if (libssh2_sftp_rename(Sftp, oldPath, newPath)) { SetError("Přejmenování"); return false; }
+    if (libssh2_sftp_rename(Sftp, oldPath, newPath)) { SetError("Renaming"); return false; }
     return true;
 }
