@@ -1,152 +1,152 @@
-# SFTP/SCP plugin pro Open Salamander (x64)
+# SFTP/SCP Plugin for Open Salamander (x64)
 
-Plnohodnotný **SFTP a SCP** klient jako file-system doplněk do [Open Salamander 5.0](https://github.com/OpenSalamander/salamander) (x64). Postavený nad **libssh2 + OpenSSL**, takže umí i moderní kryptografii, kterou původní řešení neuměla.
+A full-featured **SFTP and SCP** client as a file-system plugin for [Open Salamander 5.0](https://github.com/OpenSalamander/salamander) (x64). Built on top of **libssh2 + OpenSSL**, so it supports modern cryptography that the original solution could not handle.
 
 > Copyright © 2026 Dupl3xx
-> Vychází ze SDK demo šablony Open Salamander (SPDX hlavičky ponechány v SDK souborech). Vlastní jádro (`sftpconn.*`, `sftpglue.*`) je autorské.
+> Based on the SDK demo template of Open Salamander (SPDX headers retained in SDK files). The core implementation (`sftpconn.*`, `sftpglue.*`) is original work.
 
 ---
 
-## Co umí
+## Features
 
-### Protokoly
-- **SFTP** (SSH File Transfer Protocol) – výchozí
-- **SCP** – výpis přes shell (`ls`/`stat`), přenos přes `libssh2_scp_*`, operace (`mkdir`/`rm`/`mv`/`chmod`) přes shell
-- **Nouzové SCP** – když server nemá SFTP subsystém, automatický přechod na SCP
+### Protocols
+- **SFTP** (SSH File Transfer Protocol) – default
+- **SCP** – directory listing via shell (`ls`/`stat`), file transfer via `libssh2_scp_*`, operations (`mkdir`/`rm`/`mv`/`chmod`) via shell
+- **Fallback SCP** – when the server does not have an SFTP subsystem, automatic fallback to SCP
 
-### Kryptografie (díky OpenSSL backendu)
-Vše se **sjednává automaticky** podle serveru:
-- Výměna klíčů: curve25519-sha256, ECDH (nistp256/384/521), DH group14/16/18
-- Typy klíčů: ed25519, ECDSA, RSA (rsa-sha2-256/512)
-- Šifry: ChaCha20-Poly1305, AES-GCM, AES-CTR
-- Komprese: zlib (volitelně)
+### Cryptography (via OpenSSL backend)
+Everything is **negotiated automatically** based on the server:
+- Key exchange: curve25519-sha256, ECDH (nistp256/384/521), DH group14/16/18
+- Key types: ed25519, ECDSA, RSA (rsa-sha2-256/512)
+- Ciphers: ChaCha20-Poly1305, AES-GCM, AES-CTR
+- Compression: zlib (optional)
 
-### Autentizace
-- **Heslo**
-- **Privátní klíč** – OpenSSH/PEM i **PuTTY `.ppk`** (RSA + ed25519, v2/v3, vč. zašifrovaných – v2 SHA1/AES, v3 Argon2id; převod přes OpenSSL)
-- **Keyboard-interactive** – vč. 2FA (první výzvu vyplní heslem, další se ptá dialogem)
+### Authentication
+- **Password**
+- **Private key** – OpenSSH/PEM and **PuTTY `.ppk`** (RSA + ed25519, v2/v3, including encrypted ones – v2 SHA1/AES, v3 Argon2id; conversion via OpenSSL)
+- **Keyboard-interactive** – including 2FA (first prompt is filled with the password, subsequent prompts are handled via a dialog)
 
-### Bezpečnost
-- **Ověření host key** proti `known_hosts` (`%APPDATA%\OpenSalamander-SFTP\known_hosts`)
-- Dotaz na důvěru u neznámého serveru (uložit / jen teď / odmítnout), **varování při změně klíče** (MITM)
-- Zobrazení otisku SHA256/SHA1, typu klíče a banneru serveru
+### Security
+- **Host key verification** against `known_hosts` (`%APPDATA%\OpenSalamander-SFTP\known_hosts`)
+- Trust prompt for unknown servers (save / just now / reject), **warning on key change** (MITM)
+- Display of SHA256/SHA1 fingerprint, key type, and server banner
 
-### Souborové operace
-- Procházení (sloupce práva / vlastník / skupina), stahování, nahrávání
-- **Progress s rychlostí přenosu**, dotaz na přepsání
-- **Obnovení přerušeného přenosu (resume)** – navázání od dané pozice (jen SFTP)
-- Mazání, vytvoření adresáře, přejmenování, **změna práv (chmod)**, vlastnosti
-- **Úprava souboru na serveru** (F4 – stáhne, otevře editor, po uložení nahraje zpět)
-- **Spočítání velikosti** adresáře, příkazová řádka (SSH exec)
+### File Operations
+- Browsing (permissions / owner / group columns), downloading, uploading
+- **Progress with transfer speed**, overwrite prompt
+- **Resume interrupted transfers** – resume from a given position (SFTP only)
+- Delete, create directory, rename, **change permissions (chmod)**, properties
+- **Edit file on server** (F4 – downloads, opens editor, uploads back after saving)
+- **Calculate directory size**, command line (SSH exec)
 
-### Dialog a správa spojení
-- Přihlašovací dialog ve stylu WinSCP (strom kategorií)
-- **Uložená spojení**: Nový / Editovat / Odstranit / Přejmenovat / Jako výchozí
-- **Oko u hesla** (přepíná hvězdičky ↔ čitelné heslo)
-- Pamatuje si protokol, kompresi i SCP fallback per spojení
+### Dialog and Connection Management
+- Login dialog in WinSCP style (category tree)
+- **Saved connections**: New / Edit / Delete / Rename / Set as Default
+- **Password eye toggle** (switches between asterisks ↔ readable password)
+- Remembers protocol, compression, and SCP fallback per connection
 
-### Lokalizace
-- České i anglické rozhraní; jazykové moduly (`.slg`) pro **všech 11 jazyků** Sally buildu, takže v žádné jazykové verzi Salamandera nevyskočí chyba/výběr jazyka.
-
----
-
-## Struktura zdrojových kódů (`src/`)
-
-### Vlastní jádro doplňku
-| Soubor | Co dělá |
-|--------|---------|
-| **`sftpconn.h/.cpp`** | **Připojovací vrstva nad libssh2.** Connect (handshake, ověření host key, autentizace heslo/klíč/`.ppk`/KBI), ListDir, Download/Upload (s resume + progress), SCP varianty operací, chmod/stat, host-key verifikace (known_hosts), PuTTY `.ppk` parser + převod na PEM přes OpenSSL. Nezávislé na Salamanderu, testovatelné samostatně. |
-| **`sftpglue.h/.cpp`** | **Lepidlo** mezi Salamander FS a `CSftpConnection`. POSIX path helpery (normalizace, join, parent), `SftpEnsureConnected` (registruje callbacky host-key/KBI + cestu known_hosts), vstupní dialog pro KBI, profil spojení `CSftpProfile` + uložená spojení. |
-
-### Integrace do Salamandera (vychází z SDK šablony, výrazně přepsáno)
-| Soubor | Co dělá |
-|--------|---------|
-| `sftp.cpp` | Vstupní bod pluginu, registrace (FS název `dfs`), menu (Upravit soubor F4, Spočítat velikost, Odpojit), načítání/ukládání konfigurace + uložených spojení do registru. |
-| `fs1.cpp` | **Přihlašovací dialog** (`ConnectDlgProc`) – strom kategorií, stránky, oko u hesla, správa uložených spojení, vstupní dialog. Definice FS image listu. |
-| `fs2.cpp` | **Implementace FS rozhraní** – ChangePath, ListCurrentPath, kopírování z/na FS (s resume a overwrite dialogy), Delete, CreateDir, QuickRename, ChangeAttributes (chmod), ShowProperties, ExecuteCommandLine, ShowSecurityInfo, kontextové menu. |
-| `menu.cpp` | Obsluha položek menu pluginu (editace souboru, spočítání velikosti, odpojení). |
-| `sftp.h` | Společné deklarace, `CFSData` (práva/vlastník/skupina pro sloupce), konstanty menu. |
-| `precomp.h/.cpp` | Předkompilovaná hlavička (vč. `SFTP_QUIET` – potlačí demo dialogy SDK). |
-| `dialogs.*`, `archiver.cpp`, `viewer.cpp`, `thumbldr.cpp` | Zbytky SDK šablony – **neaktivní** (plugin je registruje jen jako FS, ne archivér/prohlížeč). |
-
-### Resource a projekt
-| Soubor | Co dělá |
-|--------|---------|
-| `lang/lang.rc`, `lang.rc2`, `lang.rh` | Dialogy (přihlášení, chmod, vstup, progress) a textové řetězce (české). Kompiluje se do `.slg`. |
-| `res/fs.ico`, `dir.ico`, `file.ico` | Ikony (FS = převzatá z původního WinSCP doplňku). |
-| `versinfo.rh2` | Verze, copyright, popis (version resource). |
-| `vcxproj/sftp.vcxproj` | MSVC projekt pluginu (linkuje libssh2 + libcrypto, delay-load, čeština přes `/source-charset:utf-8 /execution-charset:windows-1250`). |
-| `vcxproj/lang_sftp.vcxproj` | Projekt jazykového modulu `.slg`. |
+### Localization
+- Czech and English interface; language modules (`.slg`) for **all 11 languages** of the Salamander build, so no language error or selection dialog appears in any language version of Salamander.
 
 ---
 
-## Jak to funguje (tok připojení)
+## Source Code Structure (`src/`)
 
-1. Uživatel otevře cestu na FS (`dfs:`) → zobrazí se **přihlašovací dialog** (`fs1.cpp`).
-2. Po potvrzení `fs2.cpp::ChangePath` zavolá `SftpEnsureConnected` (`sftpglue.cpp`).
+### Plugin Core
+| File | Purpose |
+|------|---------|
+| **`sftpconn.h/.cpp`** | **Connection layer over libssh2.** Connect (handshake, host key verification, password/key/`.ppk`/KBI authentication), ListDir, Download/Upload (with resume + progress), SCP operation variants, chmod/stat, host-key verification (known_hosts), PuTTY `.ppk` parser + conversion to PEM via OpenSSL. Independent of Salamander, can be tested standalone. |
+| **`sftpglue.h/.cpp`** | **Glue** between Salamander FS and `CSftpConnection`. POSIX path helpers (normalization, join, parent), `SftpEnsureConnected` (registers host-key/KBI callbacks + known_hosts path), KBI input dialog, connection profile `CSftpProfile` + saved connections. |
+
+### Salamander Integration (based on SDK template, heavily rewritten)
+| File | Purpose |
+|------|---------|
+| `sftp.cpp` | Plugin entry point, registration (FS name `dfs`), menus (Edit File F4, Calculate Size, Disconnect), config loading/saving + saved connections to registry. |
+| `fs1.cpp` | **Login dialog** (`ConnectDlgProc`) – category tree, pages, password eye toggle, saved connection management, input dialog. FS image list definition. |
+| `fs2.cpp` | **FS interface implementation** – ChangePath, ListCurrentPath, copy to/from FS (with resume and overwrite dialogs), Delete, CreateDir, QuickRename, ChangeAttributes (chmod), ShowProperties, ExecuteCommandLine, ShowSecurityInfo, context menu. |
+| `menu.cpp` | Plugin menu item handlers (file editing, size calculation, disconnect). |
+| `sftp.h` | Shared declarations, `CFSData` (permissions/owner/group for columns), menu constants. |
+| `precomp.h/.cpp` | Precompiled header (includes `SFTP_QUIET` – suppresses SDK demo dialogs). |
+| `dialogs.*`, `archiver.cpp`, `viewer.cpp`, `thumbldr.cpp` | SDK template leftovers – **inactive** (plugin only registers as FS, not as archiver/viewer). |
+
+### Resources and Project
+| File | Purpose |
+|------|---------|
+| `lang/lang.rc`, `lang.rc2`, `lang.rh` | Dialogs (login, chmod, input, progress) and text strings (Czech). Compiled into `.slg`. |
+| `res/fs.ico`, `dir.ico`, `file.ico` | Icons (FS icon taken from the original WinSCP plugin). |
+| `versinfo.rh2` | Version, copyright, description (version resource). |
+| `vcxproj/sftp.vcxproj` | MSVC plugin project (links libssh2 + libcrypto, delay-load, Czech encoding via `/source-charset:utf-8 /execution-charset:windows-1250`). |
+| `vcxproj/lang_sftp.vcxproj` | Language module `.slg` project. |
+
+---
+
+## How It Works (Connection Flow)
+
+1. User opens a path in the FS (`dfs:`) → the **login dialog** appears (`fs1.cpp`).
+2. After confirmation, `fs2.cpp::ChangePath` calls `SftpEnsureConnected` (`sftpglue.cpp`).
 3. `CSftpConnection::Connect` (`sftpconn.cpp`):
-   - TCP spojení → **SSH handshake** (libssh2 + OpenSSL).
-   - **Ověření host key** proti `known_hosts`; neznámý/změněný → dotaz uživatele (callback do `sftpglue`).
-   - **Autentizace**: klíč (vč. `.ppk`) → heslo → keyboard-interactive (dle nabídky serveru).
-   - SFTP subsystém, nebo (SCP / fallback) shell režim.
-4. FS operace volají metody `CSftpConnection` přes `sftpglue` helpery.
+   - TCP connection → **SSH handshake** (libssh2 + OpenSSL).
+   - **Host key verification** against `known_hosts`; unknown/changed → user prompt (callback to `sftpglue`).
+   - **Authentication**: key (including `.ppk`) → password → keyboard-interactive (based on server offerings).
+   - SFTP subsystem, or (SCP / fallback) shell mode.
+4. FS operations call `CSftpConnection` methods via `sftpglue` helpers.
 
-### Načítání knihoven
-`sftp.spl` má `libssh2.dll` i `libcrypto-3-x64.dll` jako **delay-load**. Při startu `GlobalInit` nejdřív explicitně načte **naše** DLL z adresáře pluginu (`LoadLibraryEx` + `LOAD_WITH_ALTERED_SEARCH_PATH`), aby se nepoužila cizí verze z `PATH`.
+### Library Loading
+`sftp.spl` has both `libssh2.dll` and `libcrypto-3-x64.dll` as **delay-loaded**. At startup, `GlobalInit` first explicitly loads **our** DLLs from the plugin directory (`LoadLibraryEx` + `LOAD_WITH_ALTERED_SEARCH_PATH`) to avoid using a different version from `PATH`.
 
 ---
 
-## Sestavení
+## Building
 
-**Požadavky:** Visual Studio Build Tools 2022 (x64), Open Salamander SDK (tento plugin je součástí stromu `salamander/src/plugins/sftp`), libssh2 + OpenSSL přes vcpkg.
+**Requirements:** Visual Studio Build Tools 2022 (x64), Open Salamander SDK (this plugin is part of the `salamander/src/plugins/sftp` tree), libssh2 + OpenSSL via vcpkg.
 
-Nejdřív nainstaluj závislosti přes centrální build skript:
+First install dependencies via the central build script:
 
 ```powershell
 .\tools\vcpkg\build-third-party-libs.ps1 -SftpPlugin
 ```
 
-Tento příkaz:
-1. naklonuje a bootstrapne vcpkg (pokud ještě není),
-2. nainstaluje `libssh2` + `openssl` (3.x) do `build/vcpkg_installed_sftp/`,
-3. zkopíruje DLL pro UnRAR a FTP plugin do `build/libs/` (původní funkce).
+This command:
+1. clones and bootstraps vcpkg (if not already present),
+2. installs `libssh2` + `openssl` (3.x) into `build/vcpkg_installed_sftp/`,
+3. copies DLLs for the UnRAR and FTP plugins into `build/libs/` (original function).
 
-Pak sestav plugin:
+Then build the plugin:
 
 ```powershell
 MSBuild src\vcxproj\sftp.vcxproj /p:Configuration=Release /p:Platform=x64
 ```
 
-Výstup: `sftp.spl` + `lang\english.slg`. Ostatní jazyky se generují kopií (viz `bin/lang/`).
+Output: `sftp.spl` + `lang\english.slg`. Other languages are generated by copying (see `bin/lang/`).
 
 ---
 
-## Nasazení (`bin/`)
+## Deployment (`bin/`)
 
-Do `plugins\sftp\` instalace Salamandera zkopírovat:
+Copy the following into `plugins\sftp\` in the Salamander installation:
 - `sftp.spl`
-- `lang\*.slg` (11 jazyků)
+- `lang\*.slg` (11 languages)
 - `libssh2.dll`, `libcrypto-3-x64.dll`, `libssl-3-x64.dll`, `z.dll`, `legacy.dll`
 
 ---
 
-## Testování (`test/`)
+## Testing (`test/`)
 
-Lokální testovací SSH servery v Pythonu (paramiko) + testovací klienti:
+Local test SSH servers in Python (paramiko) + test clients:
 
-| Soubor | Účel |
-|--------|------|
-| `sftp_test_server.py` | SFTP server (`127.0.0.1:2222`, `test`/`test`). Env `SFTP_KBI_ONLY=1` = jen keyboard-interactive; `SFTP_MODERN_ONLY=1` = jen moderní šifry; `SFTP_PORT` = jiný port. |
-| `sftp_scp_test_server.py` | Server emulující **SCP** režim (shell příkazy + scp protokol), `127.0.0.1:2223`. |
-| `gen_ppk.py` | Vygeneruje testovací PuTTY `.ppk` z OpenSSH klíče. |
-| `test_conn2.cpp` | Test SFTP (connect, list, upload, chmod, stat, exec, security info, klíč). |
-| `test_scp.cpp` | Test SCP režimu (list, upload, download, mkdir, rename, …). |
-| `test_features.cpp` | Test host key (known_hosts), resume přenosu, `.ppk` klíč. |
-| `test_kbi.cpp` | Test keyboard-interactive autentizace. |
+| File | Purpose |
+|------|---------|
+| `sftp_test_server.py` | SFTP server (`127.0.0.1:2222`, `test`/`test`). Env `SFTP_KBI_ONLY=1` = keyboard-interactive only; `SFTP_MODERN_ONLY=1` = modern ciphers only; `SFTP_PORT` = custom port. |
+| `sftp_scp_test_server.py` | Server emulating **SCP** mode (shell commands + scp protocol), `127.0.0.1:2223`. |
+| `gen_ppk.py` | Generates test PuTTY `.ppk` from an OpenSSH key. |
+| `test_conn2.cpp` | SFTP test (connect, list, upload, chmod, stat, exec, security info, key). |
+| `test_scp.cpp` | SCP mode test (list, upload, download, mkdir, rename, …). |
+| `test_features.cpp` | Host key test (known_hosts), transfer resume, `.ppk` key. |
+| `test_kbi.cpp` | Keyboard-interactive authentication test. |
 
-Ověřeno: SFTP i SCP plně funkční; moderní šifry (curve25519/ed25519/chacha20) proti modern-only serveru; host key save+match; resume byte-exact; `.ppk` (RSA); KBI.
+Verified: SFTP and SCP fully functional; modern ciphers (curve25519/ed25519/chacha20) against a modern-only server; host key save+match; resume byte-exact; `.ppk` (RSA); KBI.
 
 ---
 
-## Co (zatím) nedělá oproti původnímu WinSCP doplňku
-Záměrně **SSH-only** (SFTP+SCP). Není: FTP/FTPS, WebDAV, S3, proxy, omezení rychlosti, synchronizace adresářů, fronta na pozadí, složky uložených spojení, konverze EOL/časové zóny. SSH verze je fixně 2 (libssh2 SSH-1 neumí).
+## What It Does Not Do (Compared to the Original WinSCP Plugin)
+Intentionally **SSH-only** (SFTP+SCP). Not included: FTP/FTPS, WebDAV, S3, proxy, speed limiting, directory synchronization, background queue, saved connection folders, EOL/timezone conversion. SSH version is fixed to 2 (libssh2 does not support SSH-1).
