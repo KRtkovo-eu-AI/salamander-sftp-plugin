@@ -25,6 +25,72 @@
 
 #define FILTER_COUNT (CM_FILTER_LAST - CM_FILTER_FIRST + 1)
 
+static UINT GetViewerWindowDPI(HWND window)
+{
+    typedef UINT(WINAPI * FGetDpiForWindow)(HWND);
+    static FGetDpiForWindow getDpiForWindow = NULL;
+    static BOOL loaded = FALSE;
+    if (!loaded)
+    {
+        HMODULE user32 = GetModuleHandleA("user32.dll");
+        if (user32 != NULL)
+            getDpiForWindow =
+                (FGetDpiForWindow)GetProcAddress(user32, "GetDpiForWindow");
+        loaded = TRUE;
+    }
+    if (getDpiForWindow != NULL && window != NULL)
+    {
+        UINT dpi = getDpiForWindow(window);
+        if (dpi != 0)
+            return dpi;
+    }
+    return 96;
+}
+
+static HBITMAP ScaleToolbarStrip(HBITMAP source, int iconSize)
+{
+    BITMAP bitmap;
+    if (source == NULL || GetObject(source, sizeof(bitmap), &bitmap) != sizeof(bitmap) ||
+        bitmap.bmHeight <= 0 || iconSize <= 0)
+    {
+        return NULL;
+    }
+    if (bitmap.bmHeight == iconSize)
+        return source;
+
+    int count = max(1, bitmap.bmWidth / bitmap.bmHeight);
+    HDC screenDC = HANDLES(GetDC(NULL));
+    if (screenDC == NULL)
+        return NULL;
+    HBITMAP scaled = HANDLES(CreateCompatibleBitmap(screenDC, count * iconSize,
+                                                    iconSize));
+    HDC sourceDC = HANDLES(CreateCompatibleDC(screenDC));
+    HDC targetDC = HANDLES(CreateCompatibleDC(screenDC));
+    BOOL scaledOK = FALSE;
+    if (scaled != NULL && sourceDC != NULL && targetDC != NULL)
+    {
+        HBITMAP oldSource = (HBITMAP)SelectObject(sourceDC, source);
+        HBITMAP oldTarget = (HBITMAP)SelectObject(targetDC, scaled);
+        SetStretchBltMode(targetDC, COLORONCOLOR);
+        scaledOK = StretchBlt(targetDC, 0, 0, count * iconSize, iconSize,
+                              sourceDC, 0, 0, bitmap.bmWidth, bitmap.bmHeight,
+                              SRCCOPY);
+        SelectObject(targetDC, oldTarget);
+        SelectObject(sourceDC, oldSource);
+    }
+    if (!scaledOK && scaled != NULL)
+    {
+        HANDLES(DeleteObject(scaled));
+        scaled = NULL;
+    }
+    if (sourceDC != NULL)
+        HANDLES(DeleteDC(sourceDC));
+    if (targetDC != NULL)
+        HANDLES(DeleteDC(targetDC));
+    HANDLES(ReleaseDC(NULL, screenDC));
+    return scaled;
+}
+
 MENU_TEMPLATE_ITEM MenuTemplate[] =
     {
         {MNTT_PB, -1, MNTS_B | MNTS_I | MNTS_A, 0, -1, 0, NULL},
@@ -604,6 +670,13 @@ BOOL CViewerWindow::InitializeGraphics()
     hTmpColorBitmap = salamanderPNG->LoadPNGBitmap(DLLInstance, MAKEINTRESOURCE(SalamanderGeneral->CanUse256ColorsBitmap() ? IDB_TOOLBAR256_PNG : IDB_TOOLBAR16_PNG), 0, 0);
     if (hTmpColorBitmap != NULL) // store the acquired bitmap handle in HANDLES
         HANDLES_ADD(__htBitmap, __hoCreateDIBitmap, hTmpColorBitmap);
+    int iconSize = MulDiv(16, (int)GetViewerWindowDPI(HWindow), 96);
+    HBITMAP scaledBitmap = ScaleToolbarStrip(hTmpColorBitmap, iconSize);
+    if (scaledBitmap != NULL && scaledBitmap != hTmpColorBitmap)
+    {
+        HANDLES(DeleteObject(hTmpColorBitmap));
+        hTmpColorBitmap = scaledBitmap;
+    }
 
     BOOL ok = SalamanderGUI->CreateGrayscaleAndMaskBitmaps(hTmpColorBitmap, RGB(255, 0, 255),
                                                            hTmpGrayBitmap, hTmpMaskBitmap);
@@ -612,8 +685,8 @@ BOOL CViewerWindow::InitializeGraphics()
         HANDLES_ADD(__htBitmap, __hoCreateDIBitmap, hTmpGrayBitmap);
         HANDLES_ADD(__htBitmap, __hoCreateDIBitmap, hTmpMaskBitmap);
     }
-    HHotToolBarImageList = ImageList_Create(16, 16, ILC_MASK | ILC_COLORDDB, IDX_TB_COUNT, 1);
-    HGrayToolBarImageList = ImageList_Create(16, 16, ILC_MASK | ILC_COLORDDB, IDX_TB_COUNT, 1);
+    HHotToolBarImageList = ImageList_Create(iconSize, iconSize, ILC_MASK | ILC_COLORDDB, IDX_TB_COUNT, 1);
+    HGrayToolBarImageList = ImageList_Create(iconSize, iconSize, ILC_MASK | ILC_COLORDDB, IDX_TB_COUNT, 1);
     ImageList_Add(HHotToolBarImageList, hTmpColorBitmap, hTmpMaskBitmap);
     ImageList_Add(HGrayToolBarImageList, hTmpGrayBitmap, hTmpMaskBitmap);
     HANDLES(DeleteObject(hTmpMaskBitmap));
@@ -625,9 +698,15 @@ BOOL CViewerWindow::InitializeGraphics()
 BOOL CViewerWindow::ReleaseGraphics()
 {
     if (HHotToolBarImageList != NULL)
+    {
         ImageList_Destroy(HHotToolBarImageList);
+        HHotToolBarImageList = NULL;
+    }
     if (HGrayToolBarImageList != NULL)
+    {
         ImageList_Destroy(HGrayToolBarImageList);
+        HGrayToolBarImageList = NULL;
+    }
     return TRUE;
 }
 
@@ -892,6 +971,53 @@ CViewerWindow::WindowProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
             }
         }
         break;
+    }
+
+    case WM_DPICHANGED:
+    {
+        ReleaseGraphics();
+        InitializeGraphics();
+        if (MainMenu != NULL)
+        {
+            MainMenu->SetImageList(HGrayToolBarImageList, TRUE);
+            MainMenu->SetHotImageList(HHotToolBarImageList, TRUE);
+        }
+        if (MenuBar != NULL)
+            MenuBar->SetFont();
+        if (ToolBar != NULL)
+        {
+            ToolBar->SetImageList(HGrayToolBarImageList);
+            ToolBar->SetHotImageList(HHotToolBarImageList);
+            ToolBar->SetFont();
+        }
+        if (HRebar != NULL)
+        {
+            REBARBANDINFO band;
+            ZeroMemory(&band, sizeof(band));
+            band.cbSize = sizeof(band);
+            band.fMask = RBBIM_CHILDSIZE;
+            int index = (int)SendMessage(HRebar, RB_IDTOINDEX, BANDID_MENU, 0);
+            if (index >= 0 && MenuBar != NULL)
+            {
+                band.cxMinChild = MenuBar->GetNeededWidth();
+                band.cyMinChild = MenuBar->GetNeededHeight();
+                SendMessage(HRebar, RB_SETBANDINFO, index, (LPARAM)&band);
+            }
+            index = (int)SendMessage(HRebar, RB_IDTOINDEX, BANDID_TOOLBAR, 0);
+            if (index >= 0 && ToolBar != NULL)
+            {
+                band.cxMinChild = ToolBar->GetNeededWidth();
+                band.cyMinChild = ToolBar->GetNeededHeight();
+                SendMessage(HRebar, RB_SETBANDINFO, index, (LPARAM)&band);
+            }
+            RECT rebarRect;
+            GetClientRect(HRebar, &rebarRect);
+            SendMessage(HRebar, WM_SIZE, SIZE_RESTORED,
+                        MAKELPARAM(rebarRect.right, rebarRect.bottom));
+        }
+        RedrawWindow(HWindow, NULL, NULL,
+                     RDW_INVALIDATE | RDW_ERASE | RDW_FRAME | RDW_ALLCHILDREN);
+        break; // WinLib applies the suggested top-level rectangle.
     }
 
     case WM_SYSCOLORCHANGE:
