@@ -452,18 +452,6 @@ CPluginInterfaceAbstract* WINAPI SalamanderPluginEntry(CSalamanderPluginEntryAbs
     SalamanderGeneral->GetPluginFSName(AssignedFSName, 0);
     AssignedFSNameLen = (int)strlen(AssignedFSName);
 
-    // test adding multiple filesystem names
-    char demoFSAssignedFSName[MAX_PATH]; // should live in a global variable (so it can be used throughout the plugin)
-    demoFSAssignedFSName[0] = 0;
-    int demoFSFSNameIndex; // should live in a global variable (so it can be used throughout the plugin)
-    if (salamander->AddFSName("demofs", &demoFSFSNameIndex))
-        SalamanderGeneral->GetPluginFSName(demoFSAssignedFSName, demoFSFSNameIndex);
-    char demoAssignedFSName[MAX_PATH]; // should live in a global variable (so it can be used throughout the plugin)
-    demoAssignedFSName[0] = 0;
-    int demoFSNameIndex; // should live in a global variable (so it can be used throughout the plugin)
-    if (salamander->AddFSName("demo", &demoFSNameIndex))
-        SalamanderGeneral->GetPluginFSName(demoAssignedFSName, demoFSNameIndex);
-
     // test module enumeration
     /*
   int index = 0;
