@@ -413,8 +413,41 @@ INT_PTR CALLBACK ConnectDlgProc(HWND HWindow, UINT uMsg, WPARAM wParam, LPARAM l
         }
 
         SwitchConnectPage(HWindow, 0); // start on Connection page
+#ifdef USE_DARKMODELIB
+        WinLibApplyDarkMode(HWindow);
+#endif // USE_DARKMODELIB
         return TRUE;
     }
+
+#ifdef USE_DARKMODELIB
+    case WM_THEMECHANGED:
+    case WM_SETTINGCHANGE:
+    {
+        RefreshWinLibDarkModeFromHost();
+        WinLibApplyDarkMode(HWindow);
+        if (uMsg == WM_THEMECHANGED || DarkModeHandleSettingChange(uMsg, lParam))
+        {
+            RedrawWindow(HWindow, NULL, NULL,
+                         RDW_INVALIDATE | RDW_ERASE | RDW_FRAME | RDW_ALLCHILDREN);
+            return TRUE;
+        }
+        break;
+    }
+
+    case WM_CTLCOLORDLG:
+    case WM_CTLCOLORSTATIC:
+    case WM_CTLCOLORBTN:
+    case WM_CTLCOLOREDIT:
+    case WM_CTLCOLORLISTBOX:
+    case WM_CTLCOLORMSGBOX:
+    case WM_CTLCOLORSCROLLBAR:
+    {
+        LRESULT brush = 0;
+        if (DarkModeHandleCtlColor(uMsg, wParam, lParam, brush))
+            return (INT_PTR)brush;
+        break;
+    }
+#endif // USE_DARKMODELIB
 
     case WM_NOTIFY:
     {

@@ -62,6 +62,9 @@
 #include "arraylt.h"
 #include "winliblt.h"
 #include "auxtools.h"
+#ifdef USE_DARKMODELIB
+#include "../../../darkmode.h"
+#endif // USE_DARKMODELIB
 #include "dialogs.h"
 #include "sftp.h"
 #include "sftp.rh"
