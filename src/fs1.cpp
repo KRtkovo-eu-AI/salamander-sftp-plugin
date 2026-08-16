@@ -159,6 +159,18 @@ static int GetSelProfile(HWND HWindow)
     return (idx >= 0 && idx < SftpProfileCount) ? idx : -1;
 }
 
+static void SelectProfileInList(HWND HWindow, int profileIndex)
+{
+    HWND list = GetDlgItem(HWindow, IDC_SESSIONS);
+    int count = (int)SendMessage(list, LB_GETCOUNT, 0, 0);
+    for (int item = 0; item < count; item++)
+        if ((int)SendMessage(list, LB_GETITEMDATA, item, 0) == profileIndex)
+        {
+            SendMessage(list, LB_SETCURSEL, item, 0);
+            return;
+        }
+}
+
 // gets folder from current selection (folder header / connection in folder), else ""
 static void GetSelFolder(HWND HWindow, char* out, int outSize)
 {
@@ -312,7 +324,14 @@ static BOOL CALLBACK PageToggleProc(HWND hChild, LPARAM page)
 {
     int p = ControlPage(GetDlgCtrlID(hChild));
     if (p >= 0)
-        ShowWindow(hChild, p == (int)page ? SW_SHOW : SW_HIDE);
+    {
+        BOOL active = p == (int)page;
+        ShowWindow(hChild, active ? SW_SHOW : SW_HIDE);
+        // Hidden controls must also be disabled. Otherwise the dialog manager
+        // can still invoke their keyboard mnemonics (for example New folder's
+        // Alt+F while the Connection page is visible).
+        EnableWindow(hChild, active);
+    }
     return TRUE;
 }
 
@@ -321,6 +340,34 @@ static void SwitchConnectPage(HWND HWindow, int page)
 {
     g_ActivePage = page;
     EnumChildWindows(HWindow, PageToggleProc, page);
+}
+
+// Native tree-view hit testing selects only an item's label/icon area. Keep the
+// line-style category tree, but make the unused horizontal part of every visible
+// row select that row as well.
+static void SelectConnectTreeRowAtPoint(HWND tree, POINT point)
+{
+    TVHITTESTINFO hit;
+    memset(&hit, 0, sizeof(hit));
+    hit.pt = point;
+    if (TreeView_HitTest(tree, &hit) != NULL)
+        return; // normal tree-view processing already selected this item
+
+    RECT client;
+    GetClientRect(tree, &client);
+    if (!PtInRect(&client, point))
+        return;
+
+    for (HTREEITEM item = TreeView_GetFirstVisible(tree); item != NULL;
+         item = TreeView_GetNextVisible(tree, item))
+    {
+        RECT row;
+        if (TreeView_GetItemRect(tree, item, &row, FALSE) && point.y >= row.top && point.y < row.bottom)
+        {
+            TreeView_SelectItem(tree, item);
+            return;
+        }
+    }
 }
 
 // fill category tree; 'advanced' adds advanced pages (Directories, SSH)
@@ -460,11 +507,23 @@ INT_PTR CALLBACK ConnectDlgProc(HWND HWindow, UINT uMsg, WPARAM wParam, LPARAM l
     case WM_NOTIFY:
     {
         LPNMHDR nmh = (LPNMHDR)lParam;
-        if (nmh->idFrom == IDC_CATTREE && nmh->code == TVN_SELCHANGED)
+        if (nmh->idFrom == IDC_CATTREE &&
+            (nmh->code == TVN_SELCHANGEDA || nmh->code == TVN_SELCHANGEDW))
         {
-            LPNMTREEVIEW nmtv = (LPNMTREEVIEW)lParam;
+            // SftpDialogBox creates a Unicode dialog even though the legacy
+            // plug-in sources are built in ANSI mode. Accept both notification
+            // variants; the lParam member has the same layout in A and W.
+            LPNMTREEVIEWW nmtv = (LPNMTREEVIEWW)lParam;
             SwitchConnectPage(HWindow, (int)nmtv->itemNew.lParam);
             return TRUE;
+        }
+        if (nmh->idFrom == IDC_CATTREE && nmh->code == NM_CLICK)
+        {
+            POINT point;
+            GetCursorPos(&point);
+            HWND tree = nmh->hwndFrom;
+            ScreenToClient(tree, &point);
+            SelectConnectTreeRowAtPoint(tree, point);
         }
         break;
     }
@@ -657,7 +716,10 @@ INT_PTR CALLBACK ConnectDlgProc(HWND HWindow, UINT uMsg, WPARAM wParam, LPARAM l
             if (found >= 0)
                 SftpProfiles[found] = p;
             else if (SftpProfileCount < SFTP_MAX_PROFILES)
+            {
+                found = SftpProfileCount;
                 SftpProfiles[SftpProfileCount++] = p;
+            }
             else
             {
                 SalamanderGeneral->SalMessageBox(HWindow, "Maximum number of saved connections reached.",
@@ -665,6 +727,11 @@ INT_PTR CALLBACK ConnectDlgProc(HWND HWindow, UINT uMsg, WPARAM wParam, LPARAM l
                 return TRUE;
             }
             FillSessionList(HWindow);
+            SelectProfileInList(HWindow, found);
+            HWND tree = GetDlgItem(HWindow, IDC_CATTREE);
+            HTREEITEM savedConnections = TreeView_GetNextSibling(tree, TreeView_GetRoot(tree));
+            TreeView_SelectItem(tree, savedConnections);
+            SwitchConnectPage(HWindow, 1);
             return TRUE;
         }
 
