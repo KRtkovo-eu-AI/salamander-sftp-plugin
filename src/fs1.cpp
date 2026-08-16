@@ -350,8 +350,7 @@ static void SelectConnectTreeRowAtPoint(HWND tree, POINT point)
     TVHITTESTINFO hit;
     memset(&hit, 0, sizeof(hit));
     hit.pt = point;
-    if (TreeView_HitTest(tree, &hit) != NULL)
-        return; // normal tree-view processing already selected this item
+    TreeView_HitTest(tree, &hit);
 
     RECT client;
     GetClientRect(tree, &client);
@@ -782,6 +781,9 @@ INT_PTR CALLBACK ConnectDlgProc(HWND HWindow, UINT uMsg, WPARAM wParam, LPARAM l
             // An empty password is valid for key authentication, though.
             if (SftpProfile.Password[0] == 0 && SftpProfile.KeyFile[0] == 0)
             {
+                HWND tree = GetDlgItem(HWindow, IDC_CATTREE);
+                TreeView_SelectItem(tree, TreeView_GetRoot(tree)); // select "Connection"
+                SwitchConnectPage(HWindow, 0);                     // show Connection page
                 HWND password = GetDlgItem(HWindow, IDC_PASSWORD);
                 SetFocus(password);
                 SendMessage(password, EM_SETSEL, 0, -1);
