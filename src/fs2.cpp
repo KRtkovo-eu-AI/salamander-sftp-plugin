@@ -2042,6 +2042,7 @@ static INT_PTR CALLBACK ChmodDlgProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     {
     case WM_INITDIALOG:
     {
+        WinLibApplyDialogFont(hwnd);
         HWND par = GetParent(hwnd);
         if (par != NULL)
             SalamanderGeneral->MultiMonCenterWindow(hwnd, par, TRUE);

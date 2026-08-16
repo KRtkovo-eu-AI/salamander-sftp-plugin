@@ -217,6 +217,7 @@ static INT_PTR CALLBACK InputDlgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
     {
     case WM_INITDIALOG:
     {
+        WinLibApplyDialogFont(hWnd);
         CInputData* d = (CInputData*)lParam;
         SetWindowLongPtr(hWnd, GWLP_USERDATA, (LONG_PTR)d);
         SetDlgItemText(hWnd, IDC_INPUTPROMPT, d->Prompt);
@@ -353,6 +354,7 @@ INT_PTR CALLBACK ConnectDlgProc(HWND HWindow, UINT uMsg, WPARAM wParam, LPARAM l
     {
     case WM_INITDIALOG:
     {
+        WinLibApplyDialogFont(HWindow);
         HWND hParent = GetParent(HWindow);
         if (hParent != NULL)
             SalamanderGeneral->MultiMonCenterWindow(HWindow, hParent, TRUE);

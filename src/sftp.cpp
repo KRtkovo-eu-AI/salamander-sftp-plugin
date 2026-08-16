@@ -400,7 +400,10 @@ CPluginInterfaceAbstract* WINAPI SalamanderPluginEntry(CSalamanderPluginEntryAbs
 
     // obtain the general Salamander interface
     SalamanderGeneral = salamander->GetSalamanderGeneral();
+    InitializeWinLibDialogFont(SalamanderGeneral);
+#ifdef USE_DARKMODELIB
     InitializeWinLibDarkMode(SalamanderGeneral);
+#endif // USE_DARKMODELIB
     SalamanderGeneral->GetLowerAndUpperCase(&LowerCase, &UpperCase);
     // obtain the interface providing customized Windows controls used in Salamander
     SalamanderGUI = salamander->GetSalamanderGUI();
