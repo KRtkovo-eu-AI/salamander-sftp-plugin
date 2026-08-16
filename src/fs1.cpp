@@ -420,7 +420,7 @@ INT_PTR CALLBACK ConnectDlgProc(HWND HWindow, UINT uMsg, WPARAM wParam, LPARAM l
 
         // encoding combo
         HWND enc = GetDlgItem(HWindow, IDC_ENCODING);
-        SendMessage(enc, CB_ADDSTRING, 0, (LPARAM) "Automaticky (UTF-8)");
+        SendMessage(enc, CB_ADDSTRING, 0, (LPARAM) "Automatic (UTF-8)");
         SendMessage(enc, CB_ADDSTRING, 0, (LPARAM) "UTF-8");
         SendMessage(enc, CB_ADDSTRING, 0, (LPARAM) "Off (no conversion)");
         SendMessage(enc, CB_SETCURSEL, (SftpEncoding >= 0 && SftpEncoding <= 2) ? SftpEncoding : 0, 0);
