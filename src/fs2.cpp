@@ -12,6 +12,25 @@
 #include "precomp.h"
 #include "sftpglue.h"
 
+namespace
+{
+void FlushDWMForInteractiveMove()
+{
+    typedef HRESULT(WINAPI * FDwmFlush)();
+    static FDwmFlush dwmFlush = NULL;
+    static BOOL loaded = FALSE;
+    if (!loaded)
+    {
+        HMODULE dwmApi = GetModuleHandleW(L"dwmapi.dll");
+        if (dwmApi != NULL)
+            dwmFlush = reinterpret_cast<FDwmFlush>(GetProcAddress(dwmApi, "DwmFlush"));
+        loaded = TRUE;
+    }
+    if (dwmFlush != NULL)
+        dwmFlush();
+}
+}
+
 //
 // ****************************************************************************
 // CDeleteProgressDlg
@@ -146,6 +165,14 @@ CDeleteProgressDlg::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
             }
             return TRUE;
         }
+        break;
+    }
+
+    case WM_WINDOWPOSCHANGED:
+    {
+        const WINDOWPOS* windowPos = reinterpret_cast<const WINDOWPOS*>(lParam);
+        if (windowPos != NULL && (windowPos->flags & SWP_NOSIZE) != 0)
+            FlushDWMForInteractiveMove();
         break;
     }
     }
