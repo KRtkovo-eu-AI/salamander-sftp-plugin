@@ -244,6 +244,9 @@ static INT_PTR CALLBACK InputDlgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
             return TRUE;
         }
         break;
+    case WM_WINDOWPOSCHANGED:
+        SftpFlushDWMForInteractiveMove(reinterpret_cast<const WINDOWPOS*>(lParam));
+        break;
     }
     return FALSE;
 }
@@ -719,6 +722,9 @@ INT_PTR CALLBACK ConnectDlgProc(HWND HWindow, UINT uMsg, WPARAM wParam, LPARAM l
         }
         break;
     }
+    case WM_WINDOWPOSCHANGED:
+        SftpFlushDWMForInteractiveMove(reinterpret_cast<const WINDOWPOS*>(lParam));
+        break;
     }
     return FALSE; // not processed
 }

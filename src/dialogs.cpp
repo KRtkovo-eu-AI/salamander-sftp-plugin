@@ -17,7 +17,7 @@
 
 namespace
 {
-void FlushDWMForInteractiveMove()
+void FlushDWM()
 {
     typedef HRESULT(WINAPI * FDwmFlush)();
     static FDwmFlush dwmFlush = NULL;
@@ -32,6 +32,13 @@ void FlushDWMForInteractiveMove()
     if (dwmFlush != NULL)
         dwmFlush();
 }
+
+}
+
+void SftpFlushDWMForInteractiveMove(const WINDOWPOS* windowPos)
+{
+    if (windowPos != NULL && (windowPos->flags & SWP_NOSIZE) != 0)
+        FlushDWM();
 }
 
 INT_PTR SftpDialogBox(HINSTANCE module, int resID, HWND parent, DLGPROC proc, LPARAM param)
@@ -82,9 +89,7 @@ CCommonDialog::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
     INT_PTR result = CDialog::DialogProc(uMsg, wParam, lParam);
     if (uMsg == WM_WINDOWPOSCHANGED)
     {
-        const WINDOWPOS* windowPos = reinterpret_cast<const WINDOWPOS*>(lParam);
-        if (windowPos != NULL && (windowPos->flags & SWP_NOSIZE) != 0)
-            FlushDWMForInteractiveMove();
+        SftpFlushDWMForInteractiveMove(reinterpret_cast<const WINDOWPOS*>(lParam));
     }
     return result;
 }

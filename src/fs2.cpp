@@ -2068,6 +2068,9 @@ static INT_PTR CALLBACK ChmodDlgProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
             return TRUE;
         }
         break;
+    case WM_WINDOWPOSCHANGED:
+        SftpFlushDWMForInteractiveMove(reinterpret_cast<const WINDOWPOS*>(lp));
+        break;
     }
     return FALSE;
 }

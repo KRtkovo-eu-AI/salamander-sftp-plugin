@@ -12,6 +12,7 @@
 #pragma once
 
 INT_PTR SftpDialogBox(HINSTANCE module, int resID, HWND parent, DLGPROC proc, LPARAM param);
+void SftpFlushDWMForInteractiveMove(const WINDOWPOS* windowPos);
 
 //****************************************************************************
 //
