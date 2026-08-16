@@ -709,6 +709,17 @@ INT_PTR CALLBACK ConnectDlgProc(HWND HWindow, UINT uMsg, WPARAM wParam, LPARAM l
                                                  LoadStr(IDS_PLUGINNAME), MB_OK | MB_ICONEXCLAMATION);
                 return TRUE;
             }
+            // A saved password-less profile is commonly used to avoid storing the
+            // password.  Keep the login dialog open so the prefilled user name is
+            // preserved and let the user enter the password before connecting.
+            // An empty password is valid for key authentication, though.
+            if (SftpProfile.Password[0] == 0 && SftpProfile.KeyFile[0] == 0)
+            {
+                HWND password = GetDlgItem(HWindow, IDC_PASSWORD);
+                SetFocus(password);
+                SendMessage(password, EM_SETSEL, 0, -1);
+                return TRUE;
+            }
             SftpProfile.Valid = true;
             SftpConn.Disconnect(); // new connection -> close old
             EndDialog(HWindow, IDOK);
