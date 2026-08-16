@@ -256,7 +256,7 @@ bool SftpInputDialog(HWND parent, const char* prompt, bool echo, char* out, int 
     d.Out = out;
     d.OutSize = outSize;
     if (outSize > 0) out[0] = 0;
-    return DialogBoxParam(HLanguage, MAKEINTRESOURCE(IDD_INPUT), parent, InputDlgProc, (LPARAM)&d) == IDOK;
+    return SftpDialogBox(HLanguage, IDD_INPUT, parent, InputDlgProc, (LPARAM)&d) == IDOK;
 }
 
 // which page does the given control belong to (-1 = always visible)
@@ -730,8 +730,8 @@ CPluginInterfaceForFS::ExecuteChangeDriveMenuItem(int panel)
     SalamanderGeneral->GetStdHistoryValues(SALHIST_CHANGEDIR, &History, &HistoryCount);
     while (1)
     {
-        if (DialogBoxParam(HLanguage, MAKEINTRESOURCE(IDD_CONNECT),
-                           SalamanderGeneral->GetMsgBoxParent(), ConnectDlgProc, NULL) == IDOK)
+        if (SftpDialogBox(HLanguage, IDD_CONNECT, SalamanderGeneral->GetMsgBoxParent(),
+                          ConnectDlgProc, NULL) == IDOK)
         {
             // repaint the main window so the user does not keep staring at stale content after the dialog
             UpdateWindow(SalamanderGeneral->GetMainWindowHWND());

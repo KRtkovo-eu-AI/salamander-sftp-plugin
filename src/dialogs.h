@@ -11,6 +11,8 @@
 
 #pragma once
 
+INT_PTR SftpDialogBox(HINSTANCE module, int resID, HWND parent, DLGPROC proc, LPARAM param);
+
 //****************************************************************************
 //
 // CCommonDialog

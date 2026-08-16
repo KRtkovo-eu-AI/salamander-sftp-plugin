@@ -10,9 +10,46 @@
 //****************************************************************************
 
 #include "precomp.h"
+#include "../../../common/winlibdpi.h"
 
 #define GET_X_LPARAM(lp) ((int)(short)LOWORD(lp))
 #define GET_Y_LPARAM(lp) ((int)(short)HIWORD(lp))
+
+namespace
+{
+void FlushDWMForInteractiveMove()
+{
+    typedef HRESULT(WINAPI * FDwmFlush)();
+    static FDwmFlush dwmFlush = NULL;
+    static BOOL loaded = FALSE;
+    if (!loaded)
+    {
+        HMODULE dwmApi = GetModuleHandleW(L"dwmapi.dll");
+        if (dwmApi != NULL)
+            dwmFlush = reinterpret_cast<FDwmFlush>(GetProcAddress(dwmApi, "DwmFlush"));
+        loaded = TRUE;
+    }
+    if (dwmFlush != NULL)
+        dwmFlush();
+}
+}
+
+INT_PTR SftpDialogBox(HINSTANCE module, int resID, HWND parent, DLGPROC proc, LPARAM param)
+{
+    LOGFONT logFont;
+    BYTE* dialogTemplate = NULL;
+    if (WinLibGetDefaultUILogFont(parent, &logFont))
+    {
+        dialogTemplate = WinLibDPICloneResourceDialogWithFont(module, resID, &logFont,
+                                                               WinLibDPIGetWindowDPI(parent), NULL);
+    }
+
+    INT_PTR result = dialogTemplate != NULL
+                         ? DialogBoxIndirectParamW(module, (LPCDLGTEMPLATEW)dialogTemplate, parent, proc, param)
+                         : DialogBoxParamW(module, MAKEINTRESOURCEW(resID), parent, proc, param);
+    WinLibDPIFreeDialogTemplate(dialogTemplate);
+    return result;
+}
 
 //****************************************************************************
 //
@@ -42,7 +79,14 @@ CCommonDialog::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
         break; // let DefDlgProc handle focus
     }
     }
-    return CDialog::DialogProc(uMsg, wParam, lParam);
+    INT_PTR result = CDialog::DialogProc(uMsg, wParam, lParam);
+    if (uMsg == WM_WINDOWPOSCHANGED)
+    {
+        const WINDOWPOS* windowPos = reinterpret_cast<const WINDOWPOS*>(lParam);
+        if (windowPos != NULL && (windowPos->flags & SWP_NOSIZE) != 0)
+            FlushDWMForInteractiveMove();
+    }
+    return result;
 }
 
 void CCommonDialog::NotifDlgJustCreated()
