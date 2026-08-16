@@ -2049,6 +2049,7 @@ static INT_PTR CALLBACK ChmodDlgProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         char b[16];
         _snprintf_s(b, _TRUNCATE, "%o", g_ChmodOctal & 0777);
         SetDlgItemText(hwnd, IDC_CHMODVAL, b);
+        WinLibApplyDialogFont(hwnd);
         return TRUE;
     }
     case WM_COMMAND:

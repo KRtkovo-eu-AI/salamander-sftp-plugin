@@ -226,6 +226,7 @@ static INT_PTR CALLBACK InputDlgProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM 
         HWND p = GetParent(hWnd);
         if (p != NULL)
             SalamanderGeneral->MultiMonCenterWindow(hWnd, p, TRUE);
+        WinLibApplyDialogFont(hWnd);
         SetFocus(GetDlgItem(hWnd, IDC_INPUTVAL));
         return FALSE;
     }
@@ -401,6 +402,8 @@ INT_PTR CALLBACK ConnectDlgProc(HWND HWindow, UINT uMsg, WPARAM wParam, LPARAM l
                     break;
                 }
         }
+
+        WinLibApplyDialogFont(HWindow);
 
         // "eye" button for password (glyph from Segoe MDL2 Assets font)
         g_PwdShown = false;
