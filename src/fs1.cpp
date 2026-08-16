@@ -749,6 +749,13 @@ INT_PTR CALLBACK ConnectDlgProc(HWND HWindow, UINT uMsg, WPARAM wParam, LPARAM l
 
         case IDOK:
         {
+            // When on the "Saved connections" page, require a real connection to be selected
+            if (g_ActivePage == 1 && GetSelProfile(HWindow) < 0)
+            {
+                SalamanderGeneral->SalMessageBox(HWindow, "First select a connection from the list.",
+                                                 LoadStr(IDS_PLUGINNAME), MB_OK | MB_ICONINFORMATION);
+                return TRUE;
+            }
             GetDlgItemText(HWindow, IDC_HOST, SftpProfile.Host, sizeof(SftpProfile.Host));
             char portStr[16];
             GetDlgItemText(HWindow, IDC_PORT, portStr, sizeof(portStr));
