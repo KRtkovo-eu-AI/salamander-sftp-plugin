@@ -3,6 +3,8 @@
 #include <ws2tcpip.h>
 #include <stdio.h>
 #include <stdlib.h>
+// PuTTY key conversion intentionally uses OpenSSL 3 compatibility APIs.
+#define OPENSSL_SUPPRESS_DEPRECATED
 #include <openssl/bn.h>
 #include <openssl/rsa.h>
 #include <openssl/evp.h>
