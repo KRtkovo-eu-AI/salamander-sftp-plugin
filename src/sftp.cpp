@@ -385,7 +385,7 @@ CPluginInterfaceAbstract* WINAPI SalamanderPluginEntry(CSalamanderPluginEntryAbs
     {                            // reject older versions
         MessageBox(salamander->GetParentWindow(),
 #ifdef SFTP_COMPATIBLE_WITH_500
-                   "This plugin requires Open Salamander 5.0 or later.",
+                   "This plugin requires Open Samandarin 5.0 or later.",
 #else  // SFTP_COMPATIBLE_WITH_500
                    REQUIRE_LAST_VERSION_OF_SALAMANDER,
 #endif // SFTP_COMPATIBLE_WITH_500
