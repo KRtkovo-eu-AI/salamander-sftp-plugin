@@ -29,7 +29,7 @@
 #define VERSINFO_BETAVERSION_TXT " beta (" SAL_VER_PLATFORM ")"
 #define VERSINFO_BETAVERSION_TXT_NO_PLATFORM " beta"
 
-#define VERSINFO_COPYRIGHT   "Copyright © 2026 Dupl3xx"
+#define VERSINFO_COPYRIGHT   "Copyright © 2026 Dupl3xx, Open Samandarin Authors"
 #define VERSINFO_COMPANY     "Dupl3xx"
 
 #define VERSINFO_DESCRIPTION "SFTP/SCP client for Open Salamander"

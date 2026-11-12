@@ -1,4 +1,4 @@
-// Copyright © 2026 Dupl3xx
+// Copyright © 2026 Dupl3xx, Open Samandarin Authors
 //
 // Glue between Salamander FS and CSftpConnection + POSIX path helpers.
 #pragma once

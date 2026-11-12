@@ -1,4 +1,4 @@
-// Copyright © 2026 Dupl3xx
+// Copyright © 2026 Dupl3xx, Open Samandarin Authors
 //
 // SFTP connection layer over libssh2 - core of the Salamander SFTP plugin.
 // Independent of Salamander, testable standalone.

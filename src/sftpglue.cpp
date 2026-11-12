@@ -1,4 +1,4 @@
-// Copyright © 2026 Dupl3xx
+// Copyright © 2026 Dupl3xx, Open Samandarin Authors
 #include "precomp.h"
 #include "sftpglue.h"
 #include <string.h>

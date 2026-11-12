@@ -1,4 +1,4 @@
-// Copyright © 2026 Dupl3xx
+// Copyright © 2026 Dupl3xx, Open Samandarin Authors
 #include "sftpconn.h"
 #include <ws2tcpip.h>
 #include <stdio.h>

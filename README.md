@@ -2,7 +2,7 @@
 
 A full-featured **SFTP and SCP** client as a file-system plugin for [Open Salamander 5.0](https://github.com/OpenSalamander/salamander) (x64). Built on top of **libssh2 + OpenSSL**, so it supports modern cryptography that the original solution could not handle.
 
-> Copyright © 2026 Dupl3xx
+> Copyright © 2026 Dupl3xx, Open Samandarin Authors
 > Based on the SDK demo template of Open Salamander (SPDX headers retained in SDK files). The core implementation (`sftpconn.*`, `sftpglue.*`) is original work.
 
 ---

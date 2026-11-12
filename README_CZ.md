@@ -2,7 +2,7 @@
 
 Plnohodnotný **SFTP a SCP** klient jako file-system doplněk do [Open Salamander 5.0](https://github.com/OpenSalamander/salamander) (x64). Postavený nad **libssh2 + OpenSSL**, takže umí i moderní kryptografii, kterou původní řešení neuměla.
 
-> Copyright © 2026 Dupl3xx
+> Copyright © 2026 Dupl3xx, Open Samandarin Authors
 > Vychází ze SDK demo šablony Open Salamander (SPDX hlavičky ponechány v SDK souborech). Vlastní jádro (`sftpconn.*`, `sftpglue.*`) je autorské.
 
 ---
